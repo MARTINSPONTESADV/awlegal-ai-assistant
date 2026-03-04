@@ -125,6 +125,44 @@ export type Database = {
           },
         ]
       }
+      atendimentos: {
+        Row: {
+          cliente_nome: string | null
+          cliente_whatsapp: string | null
+          id: string
+          instancia_id: string | null
+          status_ia: boolean | null
+          ultima_mensagem: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cliente_nome?: string | null
+          cliente_whatsapp?: string | null
+          id?: string
+          instancia_id?: string | null
+          status_ia?: boolean | null
+          ultima_mensagem?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cliente_nome?: string | null
+          cliente_whatsapp?: string | null
+          id?: string
+          instancia_id?: string | null
+          status_ia?: boolean | null
+          ultima_mensagem?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atendimentos_instancia_id_fkey"
+            columns: ["instancia_id"]
+            isOneToOne: false
+            referencedRelation: "instancias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       aux_assuntos: {
         Row: {
           id: string
@@ -354,6 +392,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      instancias: {
+        Row: {
+          created_at: string | null
+          id: string
+          nome: string
+          status: string | null
+          webhook_url: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          nome: string
+          status?: string | null
+          webhook_url?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          nome?: string
+          status?: string | null
+          webhook_url?: string | null
+        }
+        Relationships: []
       }
       movimentacoes: {
         Row: {
