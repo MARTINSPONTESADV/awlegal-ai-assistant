@@ -63,43 +63,52 @@ function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; an
 }
 
 /**
- * Post-process the DOCX XML to remove entire phrases
- * when a variable was replaced by empty string.
+ * Build cleanup patterns ONLY for fields that are actually empty.
+ * Each pattern targets the label phrase that surrounds the empty variable.
+ * We use XML-aware matching: allow optional XML tags (<[^>]*>) between words.
  */
-function cleanOrphanPhrases(xml: string): string {
-  const patterns = [
-    // RG patterns: ", inscrito no RG de nº {rg} {orgao}", ", portador(a) do RG nº ..."
-    /,?\s*inscrit[oa]\s+no\s+RG\s+(?:de\s+)?n[ºo°]\.?\s*[^,.]*/gi,
-    /,?\s*portador(?:a)?\s+d[eo]\s+RG\s+(?:de\s+)?n[ºo°]\.?\s*[^,.]*/gi,
-    /,?\s*portador(?:a)?\s+d[ao]\s+(?:cédula\s+de\s+)?identidade\s+(?:RG\s+)?n[ºo°]\.?\s*[^,.]*/gi,
-    // CPF patterns: ", portador do CPF sob o nº {cpf}", ", inscrito(a) no CPF nº ..."
-    /,?\s*portador(?:a)?\s+d[eo]\s+CPF\s+(?:sob\s+)?(?:o\s+)?n[ºo°]\.?\s*[^,.]*/gi,
-    /,?\s*inscrit[oa]\s+no\s+CPF\s+(?:sob\s+)?(?:o\s+)?n[ºo°]\.?\s*[^,.]*/gi,
-    /,?\s*CPF\s+(?:sob\s+)?(?:o\s+)?n[ºo°]\.?\s*[^,.]*/gi,
-    // Address patterns: ", residente na Rua {endereco}", ", residente e domiciliado(a) ..."
-    /,?\s*residente\s+(?:na?\s+(?:Rua|Av\.?|Avenida)?\s*)?(?:e\s+domiciliad[oa]\s+)?(?:n[oa]\s+)?[^,.]*/gi,
-    /,?\s*com\s+endereço\s+(?:na?|em)\s*[^,.]*/gi,
-    // Profession and civil status when empty
-    /,?\s*profissão\s*[^,.]*/gi,
-    /,?\s*estado\s+civil\s*[^,.]*/gi,
-    // Órgão expedidor standalone
-    /,?\s*(?:expedid[oa]\s+pel[oa]\s+|órgão\s+expedidor\s*:?\s*)[^,.]*/gi,
-  ];
+function buildCleanupPatterns(cliente: Cliente): RegExp[] {
+  const patterns: RegExp[] = [];
+  const X = "(?:<[^>]*>|\\s)*"; // matches XML tags + whitespace between words
+
+  if (!cliente.rg) {
+    // ", inscrito no RG de nº {vazio} {orgao}", ", portador(a) do RG nº {vazio} ..."
+    patterns.push(new RegExp(`,?${X},?${X}inscrit[oa]${X}no${X}RG${X}(?:de${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
+    patterns.push(new RegExp(`,?${X},?${X}portador(?:a)?${X}d[eo]${X}RG${X}(?:de${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
+    patterns.push(new RegExp(`,?${X},?${X}portador(?:a)?${X}d[ao]${X}(?:c[ée]dula${X}de${X})?identidade${X}(?:RG${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
+  }
+
+  if (!cliente.cpf) {
+    patterns.push(new RegExp(`,?${X},?${X}portador(?:a)?${X}d[eo]${X}CPF${X}(?:sob${X})?(?:o${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
+    patterns.push(new RegExp(`,?${X},?${X}inscrit[oa]${X}no${X}CPF${X}(?:sob${X})?(?:o${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
+  }
+
+  if (!cliente.endereco_cep) {
+    patterns.push(new RegExp(`,?${X},?${X}residente${X}(?:e${X}domiciliad[oa]${X})?(?:n[oa]${X})?(?:Rua${X}|Av\\.?${X}|Avenida${X})?[^<]*?(?=<)`, "gi"));
+    patterns.push(new RegExp(`,?${X},?${X}com${X}endere[çc]o${X}(?:n[ao]?|em)${X}[^<]*?(?=<)`, "gi"));
+  }
+
+  if (!cliente.orgao_expedidor && !cliente.rg) {
+    patterns.push(new RegExp(`,?${X},?${X}(?:expedid[oa]${X}pel[oa]${X}|[óo]rg[aã]o${X}expedidor${X}:?${X})[^<]*?(?=<)`, "gi"));
+  }
+
+  return patterns;
+}
+
+/**
+ * Clean orphan phrases from DOCX XML only for fields that are empty.
+ * Also fix double commas and comma-before-period.
+ */
+function cleanOrphanPhrases(xml: string, cliente: Cliente): string {
+  const patterns = buildCleanupPatterns(cliente);
   let result = xml;
   for (const p of patterns) {
-    result = result.replace(p, (match) => {
-      // Only remove if the match effectively has no data (just labels/prepositions)
-      // Check if it ends with a period — preserve it
-      const trimmed = match.trim();
-      return trimmed.endsWith('.') ? '.' : '';
-    });
+    result = result.replace(p, "");
   }
-  // Fix double commas and comma before period
-  result = result.replace(/,\s*,/g, ',');
-  result = result.replace(/,\s*\./g, '.');
-  // Fix leading comma after opening tag or space
-  result = result.replace(/(>\s*),\s*/g, '$1');
-  return result.replace(/  +/g, ' ');
+  // Fix punctuation artifacts
+  result = result.replace(/,(\s*(?:<[^>]*>\s*)*),/g, ","); // double commas (with XML between)
+  result = result.replace(/,(\s*(?:<[^>]*>\s*)*)\./g, "."); // comma before period
+  return result.replace(/  +/g, " ");
 }
 
 async function fetchTemplate(url: string): Promise<ArrayBuffer> {
@@ -132,7 +141,7 @@ function processTemplate(arrayBuffer: ArrayBuffer, cliente: Cliente, extras: { d
   for (const f of files) {
     const entry = outputZip.file(f);
     if (entry) {
-      outputZip.file(f, cleanOrphanPhrases(entry.asText()));
+      outputZip.file(f, cleanOrphanPhrases(entry.asText(), cliente));
     }
   }
 
