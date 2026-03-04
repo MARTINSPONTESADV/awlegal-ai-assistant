@@ -221,6 +221,24 @@ export type Database = {
         }
         Relationships: []
       }
+      controle_bot: {
+        Row: {
+          bot_ativo: boolean | null
+          last_intercept: string | null
+          whatsapp_numero: string
+        }
+        Insert: {
+          bot_ativo?: boolean | null
+          last_intercept?: string | null
+          whatsapp_numero: string
+        }
+        Update: {
+          bot_ativo?: boolean | null
+          last_intercept?: string | null
+          whatsapp_numero?: string
+        }
+        Relationships: []
+      }
       fases_processo: {
         Row: {
           id: string
