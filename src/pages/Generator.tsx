@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Download, FileText, Package, FileSignature, Scale } from "lucide-react";
+import { Download, FileText, Package, FileSignature, Scale, FileDown } from "lucide-react";
+import { jsPDF } from "jspdf";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { saveAs } from "file-saver";
@@ -235,6 +236,53 @@ export default function Generator() {
 
   const downloadSingle = (doc: { name: string; blob: Blob }) => saveAs(doc.blob, doc.name);
 
+  const downloadPdf = (doc: { name: string; blob: Blob }) => {
+    try {
+      const pdf = new jsPDF("p", "mm", "a4");
+      const cliente = (selectedCliente ? clientes.find((c) => c.id === selectedCliente) : null) ?? emptyCliente;
+      const margin = 20;
+      const pageWidth = 210 - margin * 2;
+      let y = margin;
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(14);
+      const title = doc.name.replace(".docx", "").replace(/_/g, " ");
+      pdf.text(title, 105, y, { align: "center" });
+      y += 12;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(11);
+
+      const lines: string[] = [];
+      if (cliente.nome_completo) lines.push(`Nome: ${cliente.nome_completo}`);
+      if (cliente.cpf) lines.push(`CPF: ${cliente.cpf}`);
+      if (cliente.rg) lines.push(`RG: ${cliente.rg}${cliente.orgao_expedidor ? ` - ${cliente.orgao_expedidor}` : ""}`);
+      if (cliente.nacionalidade) lines.push(`Nacionalidade: ${cliente.nacionalidade}`);
+      if (cliente.estado_civil) lines.push(`Estado Civil: ${cliente.estado_civil}`);
+      if (cliente.profissao) lines.push(`Profissão: ${cliente.profissao}`);
+      if (cliente.endereco_cep) lines.push(`Endereço: ${cliente.endereco_cep}`);
+
+      lines.forEach((line) => {
+        const split = pdf.splitTextToSize(line, pageWidth);
+        split.forEach((l: string) => {
+          if (y > 270) { pdf.addPage(); y = margin; }
+          pdf.text(l, margin, y);
+          y += 7;
+        });
+      });
+
+      y += 10;
+      if (y > 270) { pdf.addPage(); y = margin; }
+      pdf.text(`Documento gerado em ${dia} de ${mes} de ${ano}.`, margin, y);
+
+      pdf.save(doc.name.replace(".docx", ".pdf"));
+      toast.success("PDF gerado!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao gerar PDF");
+    }
+  };
+
   const downloadAll = async () => {
     if (generatedDocs.length === 0) return;
     const zip = new JSZip();
@@ -309,9 +357,14 @@ export default function Generator() {
                       <FileText className="h-5 w-5 text-muted-foreground" />
                       <span className="font-medium text-sm">{doc.name}</span>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => downloadSingle(doc)}>
-                      <Download className="h-4 w-4 mr-1" /> DOCX
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => downloadPdf(doc)}>
+                        <FileDown className="h-4 w-4 mr-1" /> PDF
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => downloadSingle(doc)}>
+                        <Download className="h-4 w-4 mr-1" /> DOCX
+                      </Button>
+                    </div>
                   </div>
                 ))}
                 {generatedDocs.length > 1 && (
