@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,15 +6,23 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Download, FileText, Package, FileSignature, Scale, FileDown } from "lucide-react";
+import { Download, FileText, Package, FileSignature, Scale } from "lucide-react";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { saveAs } from "file-saver";
 import JSZip from "jszip";
-import { jsPDF } from "jspdf";
-import html2canvas from "html2canvas";
-import { renderContratoHTML, renderProcuracaoHTML } from "@/lib/contractTemplates";
-import type { Cliente } from "@/lib/types";
+
+interface Cliente {
+  id: string;
+  nome_completo: string;
+  nacionalidade: string | null;
+  estado_civil: string | null;
+  profissao: string | null;
+  rg: string | null;
+  orgao_expedidor: string | null;
+  cpf: string | null;
+  endereco_cep: string | null;
+}
 
 const FIXED_TEMPLATES = [
   { key: "contrato", label: "Contrato", icon: FileSignature, file: "/templates/CONTRATO_MARTINS_PONTES.docx" },
@@ -22,7 +30,7 @@ const FIXED_TEMPLATES = [
 ];
 
 function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; ano: string }) {
-  const v: Record<string, string | boolean> = {
+  return {
     "NOME DA PARTE REQUERENTE": cliente.nome_completo?.toUpperCase() ?? "",
     "nome_completo": cliente.nome_completo ?? "",
     "nacionalidade": cliente.nacionalidade ?? "",
@@ -51,17 +59,13 @@ function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; an
     "MÊS": extras.mes,
     "MES": extras.mes,
     "ANO": extras.ano,
-    has_rg: !!cliente.rg,
-    has_cpf: !!cliente.cpf,
-    has_profissao: !!cliente.profissao,
-    has_estado_civil: !!cliente.estado_civil,
-    has_nacionalidade: !!cliente.nacionalidade,
-    has_endereco: !!cliente.endereco_cep,
-    has_orgao_expedidor: !!cliente.orgao_expedidor,
-  };
-  return v;
+  } as Record<string, string>;
 }
 
+/**
+ * Post-process the DOCX XML to remove entire phrases
+ * when a variable was replaced by empty string.
+ */
 function cleanOrphanPhrases(xml: string): string {
   const patterns = [
     /,?\s*portador(?:a)?\s+d[eo]\s+RG\s+n[ºo°]\.?\s*,?/gi,
@@ -78,19 +82,46 @@ function cleanOrphanPhrases(xml: string): string {
   ];
   let result = xml;
   for (const p of patterns) {
-    result = result.replace(p, (match) => {
-      if (match.trim().endsWith('.')) return '.';
-      return '';
-    });
+    result = result.replace(p, (match) => (match.trim().endsWith('.') ? '.' : ''));
   }
-  result = result.replace(/  +/g, ' ');
-  return result;
+  return result.replace(/  +/g, ' ');
 }
 
-async function fetchTemplateFile(url: string): Promise<ArrayBuffer> {
+async function fetchTemplate(url: string): Promise<ArrayBuffer> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch template: ${res.statusText}`);
+  if (!res.ok) throw new Error(`Erro ao carregar template: ${res.statusText}`);
   return res.arrayBuffer();
+}
+
+/**
+ * Process the original .docx template:
+ * 1. Open with docxtemplater
+ * 2. Replace variables with client data
+ * 3. Clean orphan phrases from the XML
+ * 4. Return the processed blob (preserving ALL original formatting)
+ */
+function processTemplate(arrayBuffer: ArrayBuffer, cliente: Cliente, extras: { dia: string; mes: string; ano: string }): Blob {
+  const variables = buildVariables(cliente, extras);
+  const zip = new PizZip(arrayBuffer);
+  const doc = new Docxtemplater(zip, {
+    paragraphLoop: true,
+    linebreaks: true,
+    delimiters: { start: "{", end: "}" },
+    nullGetter: () => "",
+  });
+  doc.render(variables);
+
+  // Post-process XML to clean orphan phrases
+  const outputZip = doc.getZip();
+  const files = ["word/document.xml", "word/header1.xml", "word/header2.xml", "word/header3.xml", "word/footer1.xml", "word/footer2.xml", "word/footer3.xml"];
+  for (const f of files) {
+    const entry = outputZip.file(f);
+    if (entry) {
+      outputZip.file(f, cleanOrphanPhrases(entry.asText()));
+    }
+  }
+
+  return outputZip.generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
 }
 
 export default function Generator() {
@@ -101,7 +132,6 @@ export default function Generator() {
   const [ano, setAno] = useState("");
   const [generatedDocs, setGeneratedDocs] = useState<{ name: string; blob: Blob; templateKey: string }[]>([]);
   const [generating, setGenerating] = useState(false);
-  const pdfContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const now = new Date();
@@ -115,28 +145,7 @@ export default function Generator() {
   }, []);
 
   const emptyCliente: Cliente = { id: "", nome_completo: "", nacionalidade: null, estado_civil: null, profissao: null, rg: null, orgao_expedidor: null, cpf: null, endereco_cep: null };
-
   const getCliente = () => (selectedCliente ? clientes.find((c) => c.id === selectedCliente) : null) ?? emptyCliente;
-
-  const createDocx = (arrayBuffer: ArrayBuffer, cliente: Cliente) => {
-    const variables = buildVariables(cliente, { dia, mes, ano });
-    const zip = new PizZip(arrayBuffer);
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      delimiters: { start: "{", end: "}" },
-      nullGetter: () => "",
-    });
-    doc.render(variables);
-    const outputZip = doc.getZip();
-    const docXml = outputZip.file("word/document.xml");
-    if (docXml) {
-      const content = docXml.asText();
-      const cleaned = cleanOrphanPhrases(content);
-      outputZip.file("word/document.xml", cleaned);
-    }
-    return doc;
-  };
 
   const generateSingle = async (templateKey: string) => {
     const template = FIXED_TEMPLATES.find((t) => t.key === templateKey);
@@ -144,19 +153,15 @@ export default function Generator() {
     const cliente = getCliente();
     setGenerating(true);
     try {
-      const arrayBuffer = await fetchTemplateFile(template.file);
-      const doc = createDocx(arrayBuffer, cliente);
-      const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const arrayBuffer = await fetchTemplate(template.file);
+      const blob = processTemplate(arrayBuffer, cliente, { dia, mes, ano });
       const safeName = (cliente.nome_completo || "documento").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
       const fileName = `${template.label}_${safeName}.docx`;
-      setGeneratedDocs((prev) => {
-        const filtered = prev.filter((d) => d.templateKey !== templateKey);
-        return [...filtered, { name: fileName, blob, templateKey }];
-      });
-      toast.success(`${template.label} gerado com sucesso!`);
+      setGeneratedDocs((prev) => [...prev.filter((d) => d.templateKey !== templateKey), { name: fileName, blob, templateKey }]);
+      toast.success(`${template.label} gerado!`);
     } catch (err: any) {
       console.error(err);
-      toast.error(`Erro ao gerar ${template.label}: ${err.message}`);
+      toast.error(`Erro: ${err.message}`);
     }
     setGenerating(false);
   };
@@ -168,9 +173,8 @@ export default function Generator() {
     const safeName = (cliente.nome_completo || "documento").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
     for (const template of FIXED_TEMPLATES) {
       try {
-        const arrayBuffer = await fetchTemplateFile(template.file);
-        const doc = createDocx(arrayBuffer, cliente);
-        const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+        const arrayBuffer = await fetchTemplate(template.file);
+        const blob = processTemplate(arrayBuffer, cliente, { dia, mes, ano });
         docs.push({ name: `${template.label}_${safeName}.docx`, blob, templateKey: template.key });
       } catch (err: any) {
         console.error(err);
@@ -183,62 +187,6 @@ export default function Generator() {
   };
 
   const downloadDocx = (doc: { name: string; blob: Blob }) => saveAs(doc.blob, doc.name);
-
-  const downloadPdf = async (doc: { name: string; blob: Blob; templateKey: string }) => {
-    const cliente = getCliente();
-    const templateData = { cliente, dia, mes, ano };
-
-    // Generate HTML based on template type
-    const html = doc.templateKey === "contrato"
-      ? renderContratoHTML(templateData)
-      : renderProcuracaoHTML(templateData);
-
-    // Render HTML in hidden container
-    const container = pdfContainerRef.current;
-    if (!container) return;
-
-    container.innerHTML = html;
-    container.style.display = "block";
-
-    try {
-      const canvas = await html2canvas(container, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        width: 794, // A4 at 96dpi
-        windowWidth: 794,
-      });
-
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pdfWidth = 210;
-      const pdfHeight = 297;
-      const imgWidth = pdfWidth;
-      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-      const imgData = canvas.toDataURL("image/png");
-
-      let position = 0;
-      let heightLeft = imgHeight;
-
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight;
-      }
-
-      pdf.save(doc.name.replace(".docx", ".pdf"));
-      toast.success("PDF gerado com sucesso!");
-    } catch (err) {
-      console.error(err);
-      toast.error("Erro ao gerar PDF");
-    } finally {
-      container.style.display = "none";
-      container.innerHTML = "";
-    }
-  };
 
   const downloadAll = async () => {
     if (generatedDocs.length === 0) return;
@@ -313,14 +261,9 @@ export default function Generator() {
                       <FileText className="h-5 w-5 text-muted-foreground" />
                       <span className="font-medium text-sm">{doc.name}</span>
                     </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => downloadPdf(doc)}>
-                        <FileDown className="h-4 w-4 mr-1" /> PDF
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => downloadDocx(doc)}>
-                        <Download className="h-4 w-4 mr-1" /> DOCX
-                      </Button>
-                    </div>
+                    <Button size="sm" variant="outline" onClick={() => downloadDocx(doc)}>
+                      <Download className="h-4 w-4 mr-1" /> Baixar DOCX
+                    </Button>
                   </div>
                 ))}
                 {generatedDocs.length > 1 && (
@@ -344,29 +287,15 @@ export default function Generator() {
                 </div>
               ))}
               <div className="mt-4 rounded-lg bg-muted p-4 text-xs text-muted-foreground space-y-2">
-                <p className="font-semibold text-foreground">Omissão Inteligente</p>
-                <p>Campos em branco são removidos automaticamente do documento final, incluindo frases inteiras que os referenciam (RG, CPF, endereço, profissão).</p>
-                <p className="font-semibold text-foreground mt-3">Formatos de download:</p>
-                <p><strong>DOCX</strong> — Documento Word editável com variáveis substituídas</p>
-                <p><strong>PDF</strong> — Documento formatado como contrato jurídico profissional</p>
+                <p className="font-semibold text-foreground">Como funciona</p>
+                <p>O sistema abre seu arquivo Word original, substitui as variáveis pelos dados do cliente e gera o documento final com a formatação 100% preservada.</p>
+                <p className="font-semibold text-foreground mt-3">Omissão Inteligente</p>
+                <p>Campos em branco (RG, CPF, endereço, profissão) são removidos junto com a frase inteira que os menciona, mantendo o texto limpo.</p>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
-
-      {/* Hidden container for PDF rendering */}
-      <div
-        ref={pdfContainerRef}
-        style={{
-          position: "absolute",
-          left: "-9999px",
-          top: 0,
-          width: "794px",
-          display: "none",
-          background: "#fff",
-        }}
-      />
     </>
   );
 }
