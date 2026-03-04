@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/hooks/useTheme";
-import { HorizontalLayout } from "@/components/HorizontalLayout";
+import { SidebarLayout } from "@/components/SidebarLayout";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Clientes from "./pages/Clientes";
@@ -20,6 +20,8 @@ import Publicacoes from "./pages/Publicacoes";
 import Financeiro from "./pages/Financeiro";
 import Diligencias from "./pages/Diligencias";
 import Exportar from "./pages/Exportar";
+import Atendimento from "./pages/Atendimento";
+import CRM from "./pages/CRM";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,7 +36,7 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />
-              <Route element={<HorizontalLayout />}>
+              <Route element={<SidebarLayout />}>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/clientes" element={<Clientes />} />
                 <Route path="/clientes/:id" element={<ClienteDetail />} />
@@ -48,6 +50,8 @@ const App = () => (
                 <Route path="/generator" element={<Generator />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/exportar" element={<Exportar />} />
+                <Route path="/atendimento" element={<Atendimento />} />
+                <Route path="/crm" element={<CRM />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
