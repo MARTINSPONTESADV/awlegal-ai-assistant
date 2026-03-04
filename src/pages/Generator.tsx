@@ -162,12 +162,12 @@ export default function Generator() {
     });
   }, []);
 
+  const emptyCliente: Cliente = { id: "", nome_completo: "", nacionalidade: null, estado_civil: null, profissao: null, rg: null, orgao_expedidor: null, cpf: null, endereco_cep: null };
+
   const generateSingle = async (templateKey: string) => {
-    if (!selectedCliente) { toast.error("Selecione um cliente."); return; }
     const template = FIXED_TEMPLATES.find((t) => t.key === templateKey);
     if (!template) return;
-    const cliente = clientes.find((c) => c.id === selectedCliente);
-    if (!cliente) return;
+    const cliente = (selectedCliente ? clientes.find((c) => c.id === selectedCliente) : null) ?? emptyCliente;
 
     setGenerating(true);
     try {
@@ -189,9 +189,7 @@ export default function Generator() {
   };
 
   const generateAll = async () => {
-    if (!selectedCliente) { toast.error("Selecione um cliente."); return; }
-    const cliente = clientes.find((c) => c.id === selectedCliente);
-    if (!cliente) return;
+    const cliente = (selectedCliente ? clientes.find((c) => c.id === selectedCliente) : null) ?? emptyCliente;
 
     setGenerating(true);
     const docs: { name: string; blob: Blob }[] = [];
