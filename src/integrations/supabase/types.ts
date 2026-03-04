@@ -615,6 +615,54 @@ export type Database = {
         }
         Relationships: []
       }
+      publicacoes: {
+        Row: {
+          caderno: string | null
+          cliente_id: string | null
+          conteudo: string | null
+          created_at: string | null
+          data_publicacao: string | null
+          id: string
+          instancia: string | null
+          lido_em: string | null
+          numero_processo: string | null
+          orgao: string | null
+          status_leitura: string | null
+          tipo_publicacao: string | null
+          tribunal: string | null
+        }
+        Insert: {
+          caderno?: string | null
+          cliente_id?: string | null
+          conteudo?: string | null
+          created_at?: string | null
+          data_publicacao?: string | null
+          id?: string
+          instancia?: string | null
+          lido_em?: string | null
+          numero_processo?: string | null
+          orgao?: string | null
+          status_leitura?: string | null
+          tipo_publicacao?: string | null
+          tribunal?: string | null
+        }
+        Update: {
+          caderno?: string | null
+          cliente_id?: string | null
+          conteudo?: string | null
+          created_at?: string | null
+          data_publicacao?: string | null
+          id?: string
+          instancia?: string | null
+          lido_em?: string | null
+          numero_processo?: string | null
+          orgao?: string | null
+          status_leitura?: string | null
+          tipo_publicacao?: string | null
+          tribunal?: string | null
+        }
+        Relationships: []
+      }
       templates: {
         Row: {
           bucket_path: string
