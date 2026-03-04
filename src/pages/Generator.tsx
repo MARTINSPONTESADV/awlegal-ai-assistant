@@ -68,22 +68,37 @@ function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; an
  */
 function cleanOrphanPhrases(xml: string): string {
   const patterns = [
-    /,?\s*portador(?:a)?\s+d[eo]\s+RG\s+n[ºo°]\.?\s*,?/gi,
-    /,?\s*portador(?:a)?\s+d[ao]\s+(?:cédula\s+de\s+)?identidade\s+(?:RG\s+)?n[ºo°]\.?\s*,?/gi,
-    /,?\s*inscrit[oa]\s+no\s+CPF\s+(?:sob\s+)?(?:o\s+)?n[ºo°]\.?\s*,?/gi,
-    /,?\s*CPF\s+n[ºo°]\.?\s*,?/gi,
-    /,?\s*(?:expedid[oa]\s+pel[oa]\s+|órgão\s+expedidor\s*:?\s*),?/gi,
-    /,?\s*residente\s+e\s+domiciliad[oa]\s+n[oa]\s*,?/gi,
-    /,?\s*com\s+endereço\s+(?:na?|em)\s*,?/gi,
-    /,?\s*profissão\s*,?/gi,
-    /,?\s*estado\s+civil\s*,?/gi,
-    /,\s*,/g,
-    /,\s*\./g,
+    // RG patterns: ", inscrito no RG de nº {rg} {orgao}", ", portador(a) do RG nº ..."
+    /,?\s*inscrit[oa]\s+no\s+RG\s+(?:de\s+)?n[ºo°]\.?\s*[^,.]*/gi,
+    /,?\s*portador(?:a)?\s+d[eo]\s+RG\s+(?:de\s+)?n[ºo°]\.?\s*[^,.]*/gi,
+    /,?\s*portador(?:a)?\s+d[ao]\s+(?:cédula\s+de\s+)?identidade\s+(?:RG\s+)?n[ºo°]\.?\s*[^,.]*/gi,
+    // CPF patterns: ", portador do CPF sob o nº {cpf}", ", inscrito(a) no CPF nº ..."
+    /,?\s*portador(?:a)?\s+d[eo]\s+CPF\s+(?:sob\s+)?(?:o\s+)?n[ºo°]\.?\s*[^,.]*/gi,
+    /,?\s*inscrit[oa]\s+no\s+CPF\s+(?:sob\s+)?(?:o\s+)?n[ºo°]\.?\s*[^,.]*/gi,
+    /,?\s*CPF\s+(?:sob\s+)?(?:o\s+)?n[ºo°]\.?\s*[^,.]*/gi,
+    // Address patterns: ", residente na Rua {endereco}", ", residente e domiciliado(a) ..."
+    /,?\s*residente\s+(?:na?\s+(?:Rua|Av\.?|Avenida)?\s*)?(?:e\s+domiciliad[oa]\s+)?(?:n[oa]\s+)?[^,.]*/gi,
+    /,?\s*com\s+endereço\s+(?:na?|em)\s*[^,.]*/gi,
+    // Profession and civil status when empty
+    /,?\s*profissão\s*[^,.]*/gi,
+    /,?\s*estado\s+civil\s*[^,.]*/gi,
+    // Órgão expedidor standalone
+    /,?\s*(?:expedid[oa]\s+pel[oa]\s+|órgão\s+expedidor\s*:?\s*)[^,.]*/gi,
   ];
   let result = xml;
   for (const p of patterns) {
-    result = result.replace(p, (match) => (match.trim().endsWith('.') ? '.' : ''));
+    result = result.replace(p, (match) => {
+      // Only remove if the match effectively has no data (just labels/prepositions)
+      // Check if it ends with a period — preserve it
+      const trimmed = match.trim();
+      return trimmed.endsWith('.') ? '.' : '';
+    });
   }
+  // Fix double commas and comma before period
+  result = result.replace(/,\s*,/g, ',');
+  result = result.replace(/,\s*\./g, '.');
+  // Fix leading comma after opening tag or space
+  result = result.replace(/(>\s*),\s*/g, '$1');
   return result.replace(/  +/g, ' ');
 }
 
