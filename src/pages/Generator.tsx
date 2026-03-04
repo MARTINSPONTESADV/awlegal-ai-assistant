@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Download, FileText, Package, FileSignature, Scale } from "lucide-react";
+import { Download, FileText, Package, FileSignature, Scale, FileDown, Loader2 } from "lucide-react";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { saveAs } from "file-saver";
@@ -188,6 +188,31 @@ export default function Generator() {
 
   const downloadDocx = (doc: { name: string; blob: Blob }) => saveAs(doc.blob, doc.name);
 
+  const [convertingPdf, setConvertingPdf] = useState<string | null>(null);
+
+  const downloadPdf = async (doc: { name: string; blob: Blob }) => {
+    setConvertingPdf(doc.name);
+    try {
+      const form = new FormData();
+      form.append("file", doc.blob, doc.name);
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/convert-to-pdf`,
+        { method: "POST", body: form }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Erro ${res.status}`);
+      }
+      const pdfBlob = await res.blob();
+      saveAs(pdfBlob, doc.name.replace(".docx", ".pdf"));
+      toast.success("PDF baixado!");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Erro ao converter PDF: ${err.message}`);
+    }
+    setConvertingPdf(null);
+  };
+
   const downloadAll = async () => {
     if (generatedDocs.length === 0) return;
     const zip = new JSZip();
@@ -261,9 +286,15 @@ export default function Generator() {
                       <FileText className="h-5 w-5 text-muted-foreground" />
                       <span className="font-medium text-sm">{doc.name}</span>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => downloadDocx(doc)}>
-                      <Download className="h-4 w-4 mr-1" /> Baixar DOCX
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => downloadPdf(doc)} disabled={convertingPdf === doc.name}>
+                        {convertingPdf === doc.name ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileDown className="h-4 w-4 mr-1" />}
+                        PDF
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => downloadDocx(doc)}>
+                        <Download className="h-4 w-4 mr-1" /> DOCX
+                      </Button>
+                    </div>
                   </div>
                 ))}
                 {generatedDocs.length > 1 && (
