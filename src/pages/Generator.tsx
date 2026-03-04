@@ -47,7 +47,7 @@ const FIXED_TEMPLATES = [
  *   4. Post-process: strip leftover orphan punctuation patterns
  *      like ", ," or leading/trailing commas in sentences.
  */
-function buildVariables(cliente: Cliente, extras: { partesRequeridas: string; dia: string; mes: string; ano: string }) {
+function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; ano: string }) {
   const v: Record<string, string | boolean> = {
     // Main fields
     "NOME DA PARTE REQUERENTE": cliente.nome_completo?.toUpperCase() ?? "",
@@ -72,8 +72,8 @@ function buildVariables(cliente: Cliente, extras: { partesRequeridas: string; di
     "endereco com CEP": cliente.endereco_cep ?? "",
     "endereco_cep": cliente.endereco_cep ?? "",
     "endereco": cliente.endereco_cep ?? "",
-    "PARTES REQUERIDAS": extras.partesRequeridas,
-    "partes_requeridas": extras.partesRequeridas,
+    "PARTES REQUERIDAS": "",
+    "partes_requeridas": "",
     "DIA": extras.dia,
     "MÊS": extras.mes,
     "MES": extras.mes,
@@ -144,7 +144,6 @@ async function fetchTemplateFile(url: string): Promise<ArrayBuffer> {
 export default function Generator() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<string>("");
-  const [partesRequeridas, setPartesRequeridas] = useState("");
   const [dia, setDia] = useState("");
   const [mes, setMes] = useState("");
   const [ano, setAno] = useState("");
@@ -212,7 +211,7 @@ export default function Generator() {
   };
 
   const createDoc = (arrayBuffer: ArrayBuffer, cliente: Cliente) => {
-    const variables = buildVariables(cliente, { partesRequeridas, dia, mes, ano });
+    const variables = buildVariables(cliente, { dia, mes, ano });
     const zip = new PizZip(arrayBuffer);
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
@@ -277,10 +276,6 @@ export default function Generator() {
                 </div>
               )}
 
-              <div>
-                <Label>Partes Requeridas (opcional)</Label>
-                <Input value={partesRequeridas} onChange={(e) => setPartesRequeridas(e.target.value)} className="mt-1" placeholder="Ex: Empresa X Ltda." />
-              </div>
 
               <div className="grid grid-cols-3 gap-4">
                 <div><Label>Dia</Label><Input value={dia} onChange={(e) => setDia(e.target.value)} className="mt-1" /></div>
