@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,50 +7,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Download, FileText, Package, FileSignature, Scale, FileDown } from "lucide-react";
-import { jsPDF } from "jspdf";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { saveAs } from "file-saver";
 import JSZip from "jszip";
-
-interface Cliente {
-  id: string;
-  nome_completo: string;
-  nacionalidade: string | null;
-  estado_civil: string | null;
-  profissao: string | null;
-  rg: string | null;
-  orgao_expedidor: string | null;
-  cpf: string | null;
-  endereco_cep: string | null;
-}
+import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
+import { renderContratoHTML, renderProcuracaoHTML } from "@/lib/contractTemplates";
+import type { Cliente } from "@/lib/types";
 
 const FIXED_TEMPLATES = [
   { key: "contrato", label: "Contrato", icon: FileSignature, file: "/templates/CONTRATO_MARTINS_PONTES.docx" },
   { key: "procuracao", label: "Procuração e Declaração", icon: Scale, file: "/templates/PROCURACAO_DECLARACAO_HIPOSSUFICIENCIA.docx" },
 ];
 
-/**
- * Build the variable map AND a "clean" version that removes
- * entire phrases when a field is blank.
- *
- * Strategy: We use docxtemplater's angular-parser with
- * conditionals so that phrases containing blank fields
- * are completely removed from the output.
- *
- * Since we can't guarantee the exact phrasing inside every
- * template, we use a dual approach:
- *   1. Fill every variable with its value (or empty string).
- *   2. Add boolean flags (has_rg, has_cpf, …) that templates
- *      can use with {#has_rg}…{/has_rg} blocks.
- *   3. For simple {variable} placeholders, we use a custom
- *      nullGetter so missing / empty values render as "".
- *   4. Post-process: strip leftover orphan punctuation patterns
- *      like ", ," or leading/trailing commas in sentences.
- */
 function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; ano: string }) {
   const v: Record<string, string | boolean> = {
-    // Main fields
     "NOME DA PARTE REQUERENTE": cliente.nome_completo?.toUpperCase() ?? "",
     "nome_completo": cliente.nome_completo ?? "",
     "nacionalidade": cliente.nacionalidade ?? "",
@@ -79,7 +51,6 @@ function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; an
     "MÊS": extras.mes,
     "MES": extras.mes,
     "ANO": extras.ano,
-    // Boolean flags for conditional blocks
     has_rg: !!cliente.rg,
     has_cpf: !!cliente.cpf,
     has_profissao: !!cliente.profissao,
@@ -91,47 +62,27 @@ function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; an
   return v;
 }
 
-/**
- * Post-process the generated XML to remove orphan commas / phrases
- * left behind when a variable was blank.
- *
- * Common patterns in legal docs:
- *   "portador do RG nº ,"  →  remove entire phrase
- *   "inscrito no CPF sob o nº ,"  →  remove
- *   "residente e domiciliado(a) na ,"  →  remove
- *   ", profissão ,"  →  remove
- */
 function cleanOrphanPhrases(xml: string): string {
   const patterns = [
-    // RG phrases
     /,?\s*portador(?:a)?\s+d[eo]\s+RG\s+n[ºo°]\.?\s*,?/gi,
     /,?\s*portador(?:a)?\s+d[ao]\s+(?:cédula\s+de\s+)?identidade\s+(?:RG\s+)?n[ºo°]\.?\s*,?/gi,
-    // CPF phrases
     /,?\s*inscrit[oa]\s+no\s+CPF\s+(?:sob\s+)?(?:o\s+)?n[ºo°]\.?\s*,?/gi,
     /,?\s*CPF\s+n[ºo°]\.?\s*,?/gi,
-    // Órgão expedidor
     /,?\s*(?:expedid[oa]\s+pel[oa]\s+|órgão\s+expedidor\s*:?\s*),?/gi,
-    // Endereço
     /,?\s*residente\s+e\s+domiciliad[oa]\s+n[oa]\s*,?/gi,
     /,?\s*com\s+endereço\s+(?:na?|em)\s*,?/gi,
-    // Profissão
     /,?\s*profissão\s*,?/gi,
-    // Estado civil standalone
     /,?\s*estado\s+civil\s*,?/gi,
-    // Clean up resulting double commas, leading/trailing commas
     /,\s*,/g,
-    /,\s*\./g,  // ", ." → "."
+    /,\s*\./g,
   ];
-
   let result = xml;
   for (const p of patterns) {
     result = result.replace(p, (match) => {
-      // If match ends with period, keep the period
       if (match.trim().endsWith('.')) return '.';
       return '';
     });
   }
-  // Clean multiple spaces
   result = result.replace(/  +/g, ' ');
   return result;
 }
@@ -148,8 +99,9 @@ export default function Generator() {
   const [dia, setDia] = useState("");
   const [mes, setMes] = useState("");
   const [ano, setAno] = useState("");
-  const [generatedDocs, setGeneratedDocs] = useState<{ name: string; blob: Blob }[]>([]);
+  const [generatedDocs, setGeneratedDocs] = useState<{ name: string; blob: Blob; templateKey: string }[]>([]);
   const [generating, setGenerating] = useState(false);
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const now = new Date();
@@ -164,21 +116,42 @@ export default function Generator() {
 
   const emptyCliente: Cliente = { id: "", nome_completo: "", nacionalidade: null, estado_civil: null, profissao: null, rg: null, orgao_expedidor: null, cpf: null, endereco_cep: null };
 
+  const getCliente = () => (selectedCliente ? clientes.find((c) => c.id === selectedCliente) : null) ?? emptyCliente;
+
+  const createDocx = (arrayBuffer: ArrayBuffer, cliente: Cliente) => {
+    const variables = buildVariables(cliente, { dia, mes, ano });
+    const zip = new PizZip(arrayBuffer);
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      delimiters: { start: "{", end: "}" },
+      nullGetter: () => "",
+    });
+    doc.render(variables);
+    const outputZip = doc.getZip();
+    const docXml = outputZip.file("word/document.xml");
+    if (docXml) {
+      const content = docXml.asText();
+      const cleaned = cleanOrphanPhrases(content);
+      outputZip.file("word/document.xml", cleaned);
+    }
+    return doc;
+  };
+
   const generateSingle = async (templateKey: string) => {
     const template = FIXED_TEMPLATES.find((t) => t.key === templateKey);
     if (!template) return;
-    const cliente = (selectedCliente ? clientes.find((c) => c.id === selectedCliente) : null) ?? emptyCliente;
-
+    const cliente = getCliente();
     setGenerating(true);
     try {
       const arrayBuffer = await fetchTemplateFile(template.file);
-      const doc = createDoc(arrayBuffer, cliente);
+      const doc = createDocx(arrayBuffer, cliente);
       const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-      const safeName = cliente.nome_completo.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+      const safeName = (cliente.nome_completo || "documento").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
       const fileName = `${template.label}_${safeName}.docx`;
       setGeneratedDocs((prev) => {
-        const filtered = prev.filter((d) => !d.name.startsWith(template.label));
-        return [...filtered, { name: fileName, blob }];
+        const filtered = prev.filter((d) => d.templateKey !== templateKey);
+        return [...filtered, { name: fileName, blob, templateKey }];
       });
       toast.success(`${template.label} gerado com sucesso!`);
     } catch (err: any) {
@@ -189,18 +162,16 @@ export default function Generator() {
   };
 
   const generateAll = async () => {
-    const cliente = (selectedCliente ? clientes.find((c) => c.id === selectedCliente) : null) ?? emptyCliente;
-
+    const cliente = getCliente();
     setGenerating(true);
-    const docs: { name: string; blob: Blob }[] = [];
-    const safeName = cliente.nome_completo.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
-
+    const docs: { name: string; blob: Blob; templateKey: string }[] = [];
+    const safeName = (cliente.nome_completo || "documento").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
     for (const template of FIXED_TEMPLATES) {
       try {
         const arrayBuffer = await fetchTemplateFile(template.file);
-        const doc = createDoc(arrayBuffer, cliente);
+        const doc = createDocx(arrayBuffer, cliente);
         const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-        docs.push({ name: `${template.label}_${safeName}.docx`, blob });
+        docs.push({ name: `${template.label}_${safeName}.docx`, blob, templateKey: template.key });
       } catch (err: any) {
         console.error(err);
         toast.error(`Erro ao gerar ${template.label}: ${err.message}`);
@@ -211,75 +182,61 @@ export default function Generator() {
     setGenerating(false);
   };
 
-  const createDoc = (arrayBuffer: ArrayBuffer, cliente: Cliente) => {
-    const variables = buildVariables(cliente, { dia, mes, ano });
-    const zip = new PizZip(arrayBuffer);
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      delimiters: { start: "{", end: "}" },
-      nullGetter: () => "",
-    });
-    doc.render(variables);
+  const downloadDocx = (doc: { name: string; blob: Blob }) => saveAs(doc.blob, doc.name);
 
-    // Post-process: clean orphan phrases from document XML
-    const outputZip = doc.getZip();
-    const docXml = outputZip.file("word/document.xml");
-    if (docXml) {
-      const content = docXml.asText();
-      const cleaned = cleanOrphanPhrases(content);
-      outputZip.file("word/document.xml", cleaned);
-    }
+  const downloadPdf = async (doc: { name: string; blob: Blob; templateKey: string }) => {
+    const cliente = getCliente();
+    const templateData = { cliente, dia, mes, ano };
 
-    return doc;
-  };
+    // Generate HTML based on template type
+    const html = doc.templateKey === "contrato"
+      ? renderContratoHTML(templateData)
+      : renderProcuracaoHTML(templateData);
 
-  const downloadSingle = (doc: { name: string; blob: Blob }) => saveAs(doc.blob, doc.name);
+    // Render HTML in hidden container
+    const container = pdfContainerRef.current;
+    if (!container) return;
 
-  const downloadPdf = (doc: { name: string; blob: Blob }) => {
+    container.innerHTML = html;
+    container.style.display = "block";
+
     try {
-      const pdf = new jsPDF("p", "mm", "a4");
-      const cliente = (selectedCliente ? clientes.find((c) => c.id === selectedCliente) : null) ?? emptyCliente;
-      const margin = 20;
-      const pageWidth = 210 - margin * 2;
-      let y = margin;
-
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(14);
-      const title = doc.name.replace(".docx", "").replace(/_/g, " ");
-      pdf.text(title, 105, y, { align: "center" });
-      y += 12;
-
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(11);
-
-      const lines: string[] = [];
-      if (cliente.nome_completo) lines.push(`Nome: ${cliente.nome_completo}`);
-      if (cliente.cpf) lines.push(`CPF: ${cliente.cpf}`);
-      if (cliente.rg) lines.push(`RG: ${cliente.rg}${cliente.orgao_expedidor ? ` - ${cliente.orgao_expedidor}` : ""}`);
-      if (cliente.nacionalidade) lines.push(`Nacionalidade: ${cliente.nacionalidade}`);
-      if (cliente.estado_civil) lines.push(`Estado Civil: ${cliente.estado_civil}`);
-      if (cliente.profissao) lines.push(`Profissão: ${cliente.profissao}`);
-      if (cliente.endereco_cep) lines.push(`Endereço: ${cliente.endereco_cep}`);
-
-      lines.forEach((line) => {
-        const split = pdf.splitTextToSize(line, pageWidth);
-        split.forEach((l: string) => {
-          if (y > 270) { pdf.addPage(); y = margin; }
-          pdf.text(l, margin, y);
-          y += 7;
-        });
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        width: 794, // A4 at 96dpi
+        windowWidth: 794,
       });
 
-      y += 10;
-      if (y > 270) { pdf.addPage(); y = margin; }
-      pdf.text(`Documento gerado em ${dia} de ${mes} de ${ano}.`, margin, y);
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const imgWidth = pdfWidth;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      const imgData = canvas.toDataURL("image/png");
+
+      let position = 0;
+      let heightLeft = imgHeight;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight;
+      }
 
       pdf.save(doc.name.replace(".docx", ".pdf"));
-      toast.success("PDF gerado!");
+      toast.success("PDF gerado com sucesso!");
     } catch (err) {
       console.error(err);
       toast.error("Erro ao gerar PDF");
+    } finally {
+      container.style.display = "none";
+      container.innerHTML = "";
     }
   };
 
@@ -306,7 +263,7 @@ export default function Generator() {
               <div>
                 <Label>Cliente</Label>
                 <Select value={selectedCliente} onValueChange={setSelectedCliente}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um cliente..." /></SelectTrigger>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um cliente (opcional)..." /></SelectTrigger>
                   <SelectContent>
                     {clientes.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome_completo}</SelectItem>))}
                   </SelectContent>
@@ -319,11 +276,10 @@ export default function Generator() {
                   <p><strong>Profissão:</strong> {clienteInfo.profissao || "—"} &nbsp; <strong>Estado Civil:</strong> {clienteInfo.estado_civil || "—"}</p>
                   <p><strong>Endereço:</strong> {clienteInfo.endereco_cep || "—"}</p>
                   {(!clienteInfo.cpf || !clienteInfo.rg || !clienteInfo.endereco_cep) && (
-                    <p className="text-xs text-yellow-500 mt-2">⚠ Campos em branco serão omitidos automaticamente no documento.</p>
+                    <p className="text-xs text-muted-foreground mt-2">⚠ Campos em branco serão omitidos automaticamente no documento.</p>
                   )}
                 </div>
               )}
-
 
               <div className="grid grid-cols-3 gap-4">
                 <div><Label>Dia</Label><Input value={dia} onChange={(e) => setDia(e.target.value)} className="mt-1" /></div>
@@ -361,7 +317,7 @@ export default function Generator() {
                       <Button size="sm" variant="outline" onClick={() => downloadPdf(doc)}>
                         <FileDown className="h-4 w-4 mr-1" /> PDF
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => downloadSingle(doc)}>
+                      <Button size="sm" variant="outline" onClick={() => downloadDocx(doc)}>
                         <Download className="h-4 w-4 mr-1" /> DOCX
                       </Button>
                     </div>
@@ -389,21 +345,28 @@ export default function Generator() {
               ))}
               <div className="mt-4 rounded-lg bg-muted p-4 text-xs text-muted-foreground space-y-2">
                 <p className="font-semibold text-foreground">Omissão Inteligente</p>
-                <p>Campos em branco são removidos automaticamente do documento final, incluindo frases que os referenciam.</p>
-                <p className="font-semibold text-foreground mt-3">Variáveis suportadas:</p>
-                <code className="block">
-                  {"{NOME DA PARTE REQUERENTE}"}<br />
-                  {"{nacionalidade}"} {"{estado civil}"}<br />
-                  {"{profissão}"} {"{número do RG}"}<br />
-                  {"{órgão expedidor}"} {"{número do CPF}"}<br />
-                  {"{endereço com CEP}"} {"{PARTES REQUERIDAS}"}<br />
-                  {"{DIA}"} {"{MÊS}"} {"{ANO}"}
-                </code>
+                <p>Campos em branco são removidos automaticamente do documento final, incluindo frases inteiras que os referenciam (RG, CPF, endereço, profissão).</p>
+                <p className="font-semibold text-foreground mt-3">Formatos de download:</p>
+                <p><strong>DOCX</strong> — Documento Word editável com variáveis substituídas</p>
+                <p><strong>PDF</strong> — Documento formatado como contrato jurídico profissional</p>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Hidden container for PDF rendering */}
+      <div
+        ref={pdfContainerRef}
+        style={{
+          position: "absolute",
+          left: "-9999px",
+          top: 0,
+          width: "794px",
+          display: "none",
+          background: "#fff",
+        }}
+      />
     </>
   );
 }
