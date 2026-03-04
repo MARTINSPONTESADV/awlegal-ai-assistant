@@ -12,16 +12,14 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CalendarIcon, Search, X, EyeOff, ExternalLink } from "lucide-react";
+import { CalendarIcon, Search, X, EyeOff } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export default function Publicacoes() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [dataInicial, setDataInicial] = useState<Date | undefined>();
   const [dataFinal, setDataFinal] = useState<Date | undefined>();
@@ -30,38 +28,35 @@ export default function Publicacoes() {
   const [orgao, setOrgao] = useState("");
   const [statusLeitura, setStatusLeitura] = useState("todas");
   const [activeFilters, setActiveFilters] = useState<Record<string, unknown>>({});
-  const [selectedMov, setSelectedMov] = useState<any | null>(null);
+  const [selectedPub, setSelectedPub] = useState<any | null>(null);
 
-  // Realtime subscription for movimentacoes
+  // Realtime subscription for publicacoes
   useEffect(() => {
     const channel = supabase
-      .channel('movimentacoes_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'movimentacoes' }, () => {
-        queryClient.invalidateQueries({ queryKey: ["movimentacoes"] });
+      .channel('publicacoes_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'publicacoes' }, () => {
+        queryClient.invalidateQueries({ queryKey: ["publicacoes"] });
       })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
 
   const handlePesquisar = () => { setActiveFilters({ dataInicial, dataFinal, cliente, numProcesso, orgao, statusLeitura }); };
   const handleLimpar = () => { setDataInicial(undefined); setDataFinal(undefined); setCliente(""); setNumProcesso(""); setOrgao(""); setStatusLeitura("todas"); setActiveFilters({}); };
   const handleNaoVisualizadas = () => { setStatusLeitura("nao_lidas"); setActiveFilters((prev) => ({ ...prev, statusLeitura: "nao_lidas" })); };
 
-  const { data: movimentacoes = [], isLoading } = useQuery({
-    queryKey: ["movimentacoes", activeFilters],
+  const { data: publicacoes = [], isLoading } = useQuery({
+    queryKey: ["publicacoes", activeFilters],
     queryFn: async () => {
-      let query = supabase.from("movimentacoes").select("*, processos!inner(id, numero_cnj, numero_processo, clientes!inner(nome_completo))").order("data_movimentacao", { ascending: false });
-      const f = activeFilters as { dataInicial?: Date; dataFinal?: Date; cliente?: string; numProcesso?: string; orgao?: string; statusLeitura?: string; };
-      if (f.dataInicial) query = query.gte("data_movimentacao", format(f.dataInicial, "yyyy-MM-dd"));
-      if (f.dataFinal) query = query.lte("data_movimentacao", format(f.dataFinal, "yyyy-MM-dd"));
-      if (f.cliente) query = query.ilike("processos.clientes.nome_completo", `%${f.cliente}%`);
-      if (f.numProcesso) { query = query.or(`numero_cnj.ilike.%${f.numProcesso}%,numero_processo.ilike.%${f.numProcesso}%`, { referencedTable: "processos" }); }
+      let query = supabase.from("publicacoes").select("*").order("data_publicacao", { ascending: false });
+      const f = activeFilters as any;
+      if (f.dataInicial) query = query.gte("data_publicacao", format(f.dataInicial, "dd/MM/yyyy"));
+      if (f.dataFinal) query = query.lte("data_publicacao", format(f.dataFinal, "dd/MM/yyyy"));
+      if (f.cliente) query = query.ilike("cliente_id", `%${f.cliente}%`);
+      if (f.numProcesso) query = query.ilike("numero_processo", `%${f.numProcesso}%`);
       if (f.orgao) query = query.ilike("orgao", `%${f.orgao}%`);
-      if (f.statusLeitura === "lidas") query = query.eq("lida", true);
-      else if (f.statusLeitura === "nao_lidas") query = query.eq("lida", false);
+      if (f.statusLeitura === "lidas") query = query.eq("status_leitura", "Lida");
+      else if (f.statusLeitura === "nao_lidas") query = query.eq("status_leitura", "Não lida");
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
@@ -69,8 +64,13 @@ export default function Publicacoes() {
   });
 
   const toggleLida = useMutation({
-    mutationFn: async ({ id, lida }: { id: string; lida: boolean }) => { const { error } = await supabase.from("movimentacoes").update({ lida: !lida }).eq("id", id); if (error) throw error; },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["movimentacoes"] }); toast.success("Status atualizado"); },
+    mutationFn: async ({ id, current }: { id: string; current: string }) => {
+      const newStatus = current === "Lida" ? "Não lida" : "Lida";
+      const lido_em = newStatus === "Lida" ? new Date().toISOString() : null;
+      const { error } = await supabase.from("publicacoes").update({ status_leitura: newStatus, lido_em }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["publicacoes"] }); toast.success("Status atualizado"); },
   });
 
   return (
@@ -90,33 +90,34 @@ export default function Publicacoes() {
             </div>
             <div className="flex items-center justify-end gap-2 pt-2"><Button variant="destructive" size="sm" onClick={handleNaoVisualizadas}><EyeOff className="mr-1 h-4 w-4" />Não visualizadas</Button><Button variant="outline" size="sm" onClick={handleLimpar}><X className="mr-1 h-4 w-4" />Limpar</Button><Button size="sm" onClick={handlePesquisar}><Search className="mr-1 h-4 w-4" />Pesquisar</Button></div>
           </CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-lg">Listagem de publicações</CardTitle></CardHeader><CardContent>
-            {isLoading ? (<p className="text-muted-foreground text-sm py-8 text-center">Carregando...</p>) : movimentacoes.length === 0 ? (<p className="text-muted-foreground text-sm py-8 text-center">Não existem publicações no período especificado.</p>) : (
-              <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Órgão</TableHead><TableHead>Nº Processo</TableHead><TableHead>Cliente</TableHead><TableHead>Conteúdo</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
-              <TableBody>{movimentacoes.map((mov: any) => (<TableRow key={mov.id} className={cn("cursor-pointer", !mov.lida && "bg-accent/50")} onClick={() => setSelectedMov(mov)}>
-                <TableCell className="whitespace-nowrap">{format(new Date(mov.data_movimentacao), "dd/MM/yyyy")}</TableCell><TableCell>{mov.orgao || "—"}</TableCell><TableCell className="whitespace-nowrap">{mov.processos?.numero_cnj || mov.processos?.numero_processo || "—"}</TableCell><TableCell>{mov.processos?.clientes?.nome_completo || "—"}</TableCell><TableCell className="max-w-xs truncate">{mov.conteudo}</TableCell>
-                <TableCell><Badge variant={mov.lida ? "secondary" : "destructive"} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleLida.mutate({ id: mov.id, lida: mov.lida }); }}>{mov.lida ? "Lida" : "Não lida"}</Badge></TableCell>
-                <TableCell className="text-right"><Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/processos/${mov.processo_id}`); }}><ExternalLink className="h-4 w-4" /></Button></TableCell>
+          <Card><CardHeader><CardTitle className="text-lg">Listagem de publicações ({publicacoes.length})</CardTitle></CardHeader><CardContent>
+            {isLoading ? (<p className="text-muted-foreground text-sm py-8 text-center">Carregando...</p>) : publicacoes.length === 0 ? (<p className="text-muted-foreground text-sm py-8 text-center">Não existem publicações no período especificado.</p>) : (
+              <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Órgão</TableHead><TableHead>Nº Processo</TableHead><TableHead>Cliente</TableHead><TableHead>Conteúdo</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+              <TableBody>{publicacoes.map((pub: any) => (<TableRow key={pub.id} className={cn("cursor-pointer", pub.status_leitura !== "Lida" && "bg-accent/50")} onClick={() => setSelectedPub(pub)}>
+                <TableCell className="whitespace-nowrap">{pub.data_publicacao || "—"}</TableCell>
+                <TableCell>{pub.orgao || "—"}</TableCell>
+                <TableCell className="whitespace-nowrap">{pub.numero_processo || "—"}</TableCell>
+                <TableCell>{pub.cliente_id || "—"}</TableCell>
+                <TableCell className="max-w-xs truncate">{pub.conteudo || "—"}</TableCell>
+                <TableCell><Badge variant={pub.status_leitura === "Lida" ? "secondary" : "destructive"} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleLida.mutate({ id: pub.id, current: pub.status_leitura || "" }); }}>{pub.status_leitura || "Não lida"}</Badge></TableCell>
               </TableRow>))}</TableBody></Table></div>
             )}
           </CardContent></Card>
         </TabsContent>
       </Tabs>
-      <Dialog open={!!selectedMov} onOpenChange={(open) => !open && setSelectedMov(null)}>
+      <Dialog open={!!selectedPub} onOpenChange={(open) => !open && setSelectedPub(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto"><DialogHeader><DialogTitle>Detalhes da Publicação</DialogTitle></DialogHeader>
-          {selectedMov && (<div className="space-y-4">
+          {selectedPub && (<div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Data</p><p className="font-medium text-sm">{format(new Date(selectedMov.data_movimentacao), "dd/MM/yyyy")}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Órgão</p><p className="font-medium text-sm">{selectedMov.orgao || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tipo</p><p className="font-medium text-sm">{selectedMov.tipo_movimentacao || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Fonte</p><p className="font-medium text-sm">{selectedMov.fonte || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Processo</p><p className="font-medium text-sm">{selectedMov.processos?.numero_cnj || selectedMov.processos?.numero_processo || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Cliente</p><p className="font-medium text-sm">{selectedMov.processos?.clientes?.nome_completo || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Status</p><Badge variant={selectedMov.lida ? "secondary" : "destructive"} className="cursor-pointer" onClick={() => { toggleLida.mutate({ id: selectedMov.id, lida: selectedMov.lida }); setSelectedMov((prev: any) => prev ? { ...prev, lida: !prev.lida } : null); }}>{selectedMov.lida ? "Lida" : "Não lida"}</Badge></div>
+              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Data</p><p className="font-medium text-sm">{selectedPub.data_publicacao || "—"}</p></div>
+              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Órgão</p><p className="font-medium text-sm">{selectedPub.orgao || "—"}</p></div>
+              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tipo</p><p className="font-medium text-sm">{selectedPub.tipo_publicacao || "—"}</p></div>
+              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tribunal</p><p className="font-medium text-sm">{selectedPub.tribunal || "—"}</p></div>
+              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Processo</p><p className="font-medium text-sm">{selectedPub.numero_processo || "—"}</p></div>
+              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Cliente</p><p className="font-medium text-sm">{selectedPub.cliente_id || "—"}</p></div>
+              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Status</p><Badge variant={selectedPub.status_leitura === "Lida" ? "secondary" : "destructive"} className="cursor-pointer" onClick={() => { toggleLida.mutate({ id: selectedPub.id, current: selectedPub.status_leitura || "" }); setSelectedPub((prev: any) => prev ? { ...prev, status_leitura: prev.status_leitura === "Lida" ? "Não lida" : "Lida" } : null); }}>{selectedPub.status_leitura || "Não lida"}</Badge></div>
             </div>
-            {selectedMov.descricao && (<div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Descrição</p><div className="rounded-lg border border-border bg-muted/50 p-4 text-sm whitespace-pre-wrap leading-relaxed max-h-[20vh] overflow-y-auto">{selectedMov.descricao}</div></div>)}
-            <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Conteúdo</p><div className="rounded-lg border border-border bg-muted/50 p-4 text-sm whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto">{selectedMov.conteudo}</div></div>
-            <div className="flex justify-end"><Button variant="outline" size="sm" onClick={() => { setSelectedMov(null); navigate(`/processos/${selectedMov.processo_id}`); }}><ExternalLink className="h-4 w-4 mr-2" />Ver Processo</Button></div>
+            <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Conteúdo</p><div className="rounded-lg border border-border bg-muted/50 p-4 text-sm whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto">{selectedPub.conteudo || "—"}</div></div>
           </div>)}
         </DialogContent>
       </Dialog>
