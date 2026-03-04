@@ -69,27 +69,29 @@ function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; an
  */
 function buildCleanupPatterns(cliente: Cliente): RegExp[] {
   const patterns: RegExp[] = [];
-  const X = "(?:<[^>]*>|\\s)*"; // matches XML tags + whitespace between words
+  // X matches optional XML tags + whitespace between words in DOCX XML
+  const X = "(?:<[^>]*>|\\s)*";
 
   if (!cliente.rg) {
-    // ", inscrito no RG de nº {vazio} {orgao}", ", portador(a) do RG nº {vazio} ..."
-    patterns.push(new RegExp(`,?${X},?${X}inscrit[oa]${X}no${X}RG${X}(?:de${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
-    patterns.push(new RegExp(`,?${X},?${X}portador(?:a)?${X}d[eo]${X}RG${X}(?:de${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
-    patterns.push(new RegExp(`,?${X},?${X}portador(?:a)?${X}d[ao]${X}(?:c[ée]dula${X}de${X})?identidade${X}(?:RG${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
+    // ", inscrito no RG de nº {empty} {empty_orgao}" — only match the label phrase, stop before real text
+    patterns.push(new RegExp(`,?${X}inscrit[oa]${X}no${X}RG${X}(?:de${X})?n[ºo°]\\.?\\s*`, "gi"));
+    patterns.push(new RegExp(`,?${X}portador(?:a)?${X}d[eo]${X}RG${X}(?:de${X})?n[ºo°]\\.?\\s*`, "gi"));
+    patterns.push(new RegExp(`,?${X}portador(?:a)?${X}d[ao]${X}(?:c[ée]dula${X}de${X})?identidade${X}(?:RG${X})?n[ºo°]\\.?\\s*`, "gi"));
   }
 
   if (!cliente.cpf) {
-    patterns.push(new RegExp(`,?${X},?${X}portador(?:a)?${X}d[eo]${X}CPF${X}(?:sob${X})?(?:o${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
-    patterns.push(new RegExp(`,?${X},?${X}inscrit[oa]${X}no${X}CPF${X}(?:sob${X})?(?:o${X})?n[ºo°]\\.?${X}[^<]*?(?=<)`, "gi"));
+    patterns.push(new RegExp(`,?${X}portador(?:a)?${X}d[eo]${X}CPF${X}(?:sob${X})?(?:o${X})?n[ºo°]\\.?\\s*`, "gi"));
+    patterns.push(new RegExp(`,?${X}inscrit[oa]${X}no${X}CPF${X}(?:sob${X})?(?:o${X})?n[ºo°]\\.?\\s*`, "gi"));
   }
 
   if (!cliente.endereco_cep) {
-    patterns.push(new RegExp(`,?${X},?${X}residente${X}(?:e${X}domiciliad[oa]${X})?(?:n[oa]${X})?(?:Rua${X}|Av\\.?${X}|Avenida${X})?[^<]*?(?=<)`, "gi"));
-    patterns.push(new RegExp(`,?${X},?${X}com${X}endere[çc]o${X}(?:n[ao]?|em)${X}[^<]*?(?=<)`, "gi"));
+    // Match ", residente e domiciliado(a) na Rua" + trailing whitespace only (not the next phrase)
+    patterns.push(new RegExp(`,?${X}residente${X}(?:e${X}domiciliad[oa]${X})?(?:n[oa]${X})?(?:Rua|Av\\.?|Avenida)?\\s*`, "gi"));
+    patterns.push(new RegExp(`,?${X}com${X}endere[çc]o${X}(?:n[ao]?|em)\\s*`, "gi"));
   }
 
   if (!cliente.orgao_expedidor && !cliente.rg) {
-    patterns.push(new RegExp(`,?${X},?${X}(?:expedid[oa]${X}pel[oa]${X}|[óo]rg[aã]o${X}expedidor${X}:?${X})[^<]*?(?=<)`, "gi"));
+    patterns.push(new RegExp(`,?${X}(?:expedid[oa]${X}pel[oa]|[óo]rg[aã]o${X}expedidor${X}:?)\\s*`, "gi"));
   }
 
   return patterns;
