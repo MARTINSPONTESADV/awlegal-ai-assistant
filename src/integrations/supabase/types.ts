@@ -221,6 +221,30 @@ export type Database = {
         }
         Relationships: []
       }
+      controle_atendimento: {
+        Row: {
+          atendente_id: string | null
+          bot_ativo: boolean | null
+          modulo_origem: string | null
+          status_funil: string | null
+          whatsapp_id: string
+        }
+        Insert: {
+          atendente_id?: string | null
+          bot_ativo?: boolean | null
+          modulo_origem?: string | null
+          status_funil?: string | null
+          whatsapp_id: string
+        }
+        Update: {
+          atendente_id?: string | null
+          bot_ativo?: boolean | null
+          modulo_origem?: string | null
+          status_funil?: string | null
+          whatsapp_id?: string
+        }
+        Relationships: []
+      }
       controle_bot: {
         Row: {
           bot_ativo: boolean | null
@@ -251,6 +275,33 @@ export type Database = {
         Update: {
           id?: string
           nome?: string
+        }
+        Relationships: []
+      }
+      historico_mensagens: {
+        Row: {
+          conteudo: string | null
+          created_at: string | null
+          direcao: string | null
+          id: string
+          tipo_midia: string | null
+          whatsapp_id: string | null
+        }
+        Insert: {
+          conteudo?: string | null
+          created_at?: string | null
+          direcao?: string | null
+          id?: string
+          tipo_midia?: string | null
+          whatsapp_id?: string | null
+        }
+        Update: {
+          conteudo?: string | null
+          created_at?: string | null
+          direcao?: string | null
+          id?: string
+          tipo_midia?: string | null
+          whatsapp_id?: string | null
         }
         Relationships: []
       }
