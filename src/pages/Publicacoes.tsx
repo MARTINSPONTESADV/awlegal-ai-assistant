@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +31,20 @@ export default function Publicacoes() {
   const [statusLeitura, setStatusLeitura] = useState("todas");
   const [activeFilters, setActiveFilters] = useState<Record<string, unknown>>({});
   const [selectedMov, setSelectedMov] = useState<any | null>(null);
+
+  // Realtime subscription for movimentacoes
+  useEffect(() => {
+    const channel = supabase
+      .channel('movimentacoes_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'movimentacoes' }, () => {
+        queryClient.invalidateQueries({ queryKey: ["movimentacoes"] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   const handlePesquisar = () => { setActiveFilters({ dataInicial, dataFinal, cliente, numProcesso, orgao, statusLeitura }); };
   const handleLimpar = () => { setDataInicial(undefined); setDataFinal(undefined); setCliente(""); setNumProcesso(""); setOrgao(""); setStatusLeitura("todas"); setActiveFilters({}); };
