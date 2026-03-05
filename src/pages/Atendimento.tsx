@@ -6,12 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Bot, BotOff, Send, Mic, MicOff, Phone, User, Circle,
+  Bot, BotOff, Send, Phone, User, Circle,
   Search, Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import AudioRecorder from "@/components/atendimento/AudioRecorder";
+import ChatAudioPlayer from "@/components/atendimento/ChatAudioPlayer";
 
 const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manual-aw";
 
@@ -40,11 +42,8 @@ export default function Atendimento() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [isRecording, setIsRecording] = useState(false);
   const [loadingBot, setLoadingBot] = useState(false);
   const [sending, setSending] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load chats from controle_bot
@@ -155,52 +154,33 @@ export default function Atendimento() {
     }
   };
 
-  // Audio recording
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      chunksRef.current = [];
-      recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
-      recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        const filename = `${selectedChat}/${Date.now()}.webm`;
-        const { error } = await supabase.storage
-          .from("mensagens_audio")
-          .upload(filename, blob, { contentType: "audio/webm" });
-        if (!error) {
-          const { data: urlData } = supabase.storage.from("mensagens_audio").getPublicUrl(filename);
-          try {
-            const response = await fetch(N8N_WEBHOOK_URL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                tipo: "audio",
-                numero: selectedChat,
-                audioUrl: urlData.publicUrl,
-              }),
-            });
-            if (!response.ok) throw new Error("Webhook error");
-            toast({ title: "Áudio enviado!" });
-          } catch {
-            toast({ title: "Erro ao enviar áudio", variant: "destructive" });
-          }
-        } else {
-          toast({ title: "Erro ao fazer upload do áudio", variant: "destructive" });
-        }
-        stream.getTracks().forEach((t) => t.stop());
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-    } catch {
-      toast({ title: "Erro ao acessar microfone", variant: "destructive" });
+  // Audio upload handler for AudioRecorder component
+  const handleAudioSend = async (blob: Blob) => {
+    if (!selectedChat) return;
+    const filename = `${selectedChat}/${Date.now()}.webm`;
+    const { error } = await supabase.storage
+      .from("mensagens_audio")
+      .upload(filename, blob, { contentType: "audio/webm" });
+    if (!error) {
+      const { data: urlData } = supabase.storage.from("mensagens_audio").getPublicUrl(filename);
+      try {
+        const response = await fetch(N8N_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipo: "audio",
+            numero: selectedChat,
+            audioUrl: urlData.publicUrl,
+          }),
+        });
+        if (!response.ok) throw new Error("Webhook error");
+        toast({ title: "Áudio enviado!" });
+      } catch {
+        toast({ title: "Erro ao enviar áudio", variant: "destructive" });
+      }
+    } else {
+      toast({ title: "Erro ao fazer upload do áudio", variant: "destructive" });
     }
-  };
-
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
   };
 
   const filteredChats = chats.filter((c) =>
@@ -319,7 +299,7 @@ export default function Atendimento() {
                           </p>
                         )}
                         {msg.tipo_midia === "audio" ? (
-                          <audio controls src={msg.conteudo || ""} className="max-w-full" />
+                          <ChatAudioPlayer src={msg.conteudo || ""} outgoing={outgoing} />
                         ) : msg.tipo_midia === "imagem" || msg.tipo_midia === "image" ? (
                           <img src={msg.conteudo || ""} alt="imagem" className="rounded-lg max-w-full max-h-60" />
                         ) : (
@@ -340,14 +320,7 @@ export default function Atendimento() {
 
             <div className="p-3 border-t border-border bg-card/30">
               <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={isRecording ? stopRecording : startRecording}
-                  className={cn(isRecording && "text-destructive animate-pulse")}
-                >
-                  {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                </Button>
+                <AudioRecorder onSend={handleAudioSend} disabled={sending} />
                 <Input
                   placeholder="Digite uma mensagem..."
                   value={newMsg}
