@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,18 +7,16 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import {
   Bot, BotOff, Send, Mic, MicOff, Phone, User, Circle,
-  Search, Briefcase, Play, Pause, Image as ImageIcon,
+  Search, Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 interface Chat {
-  whatsapp_id: string;
+  whatsapp_numero: string;
   bot_ativo: boolean | null;
-  status_funil: string | null;
-  atendente_id: string | null;
-  modulo_origem: string | null;
+  last_intercept: string | null;
   lastMessage?: string;
   lastTime?: string;
 }
@@ -46,35 +43,36 @@ export default function Atendimento() {
   const chunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load chats
+  // Load chats from controle_bot
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("controle_atendimento").select("*");
+      const { data } = await supabase.from("controle_bot").select("*");
       if (data) {
-        // Get last message for each chat
-        const enriched = await Promise.all(
+        const enriched: Chat[] = await Promise.all(
           data.map(async (c) => {
             const { data: msgs } = await supabase
               .from("historico_mensagens")
               .select("conteudo, created_at")
-              .eq("whatsapp_id", c.whatsapp_id)
+              .eq("whatsapp_id", c.whatsapp_numero)
               .order("created_at", { ascending: false })
               .limit(1);
             return {
-              ...c,
+              whatsapp_numero: c.whatsapp_numero,
+              bot_ativo: c.bot_ativo,
+              last_intercept: c.last_intercept,
               lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
               lastTime: msgs?.[0]?.created_at || undefined,
             };
           })
         );
         setChats(enriched);
-        if (!selectedChat && enriched.length > 0) setSelectedChat(enriched[0].whatsapp_id);
+        if (!selectedChat && enriched.length > 0) setSelectedChat(enriched[0].whatsapp_numero);
       }
     }
     load();
   }, []);
 
-  // Load messages for selected chat
+  // Load messages + realtime subscription for selected chat
   useEffect(() => {
     if (!selectedChat) return;
     async function loadMsgs() {
@@ -87,7 +85,6 @@ export default function Atendimento() {
     }
     loadMsgs();
 
-    // Realtime subscription
     const channel = supabase
       .channel(`chat-${selectedChat}`)
       .on("postgres_changes", {
@@ -107,20 +104,20 @@ export default function Atendimento() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensagens]);
 
-  const currentChat = chats.find((c) => c.whatsapp_id === selectedChat);
+  const currentChat = chats.find((c) => c.whatsapp_numero === selectedChat);
 
-  // Toggle bot
+  // Toggle bot on controle_bot table
   const toggleBot = async () => {
     if (!currentChat) return;
     setLoadingBot(true);
     const newVal = !currentChat.bot_ativo;
     await supabase
-      .from("controle_atendimento")
+      .from("controle_bot")
       .update({ bot_ativo: newVal })
-      .eq("whatsapp_id", currentChat.whatsapp_id);
+      .eq("whatsapp_numero", currentChat.whatsapp_numero);
     setChats((prev) =>
       prev.map((c) =>
-        c.whatsapp_id === currentChat.whatsapp_id ? { ...c, bot_ativo: newVal } : c
+        c.whatsapp_numero === currentChat.whatsapp_numero ? { ...c, bot_ativo: newVal } : c
       )
     );
     toast({
@@ -181,7 +178,7 @@ export default function Atendimento() {
   };
 
   const filteredChats = chats.filter((c) =>
-    c.whatsapp_id.toLowerCase().includes(searchTerm.toLowerCase())
+    c.whatsapp_numero.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const formatPhone = (id: string) => {
@@ -209,25 +206,25 @@ export default function Atendimento() {
         <ScrollArea className="flex-1">
           {filteredChats.map((chat) => (
             <button
-              key={chat.whatsapp_id}
-              onClick={() => setSelectedChat(chat.whatsapp_id)}
+              key={chat.whatsapp_numero}
+              onClick={() => setSelectedChat(chat.whatsapp_numero)}
               className={cn(
-                "w-full flex items-start gap-3 p-3 text-left transition-colors border-b border-border/50 hover:bg-emerald-500/5",
-                selectedChat === chat.whatsapp_id && "bg-emerald-500/10 border-l-2 border-l-emerald-500"
+                "w-full flex items-start gap-3 p-3 text-left transition-colors border-b border-border/50 hover:bg-accent/50",
+                selectedChat === chat.whatsapp_numero && "bg-accent border-l-2 border-l-primary"
               )}
             >
               <div className="relative shrink-0">
-                <div className="h-10 w-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <Phone className="h-4 w-4 text-emerald-400" />
+                <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
+                  <Phone className="h-4 w-4 text-primary" />
                 </div>
                 {chat.bot_ativo && (
-                  <Circle className="absolute -bottom-0.5 -right-0.5 h-3 w-3 fill-emerald-400 text-emerald-400" />
+                  <Circle className="absolute -bottom-0.5 -right-0.5 h-3 w-3 fill-primary text-primary" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-foreground truncate">
-                    {formatPhone(chat.whatsapp_id)}
+                    {formatPhone(chat.whatsapp_numero)}
                   </span>
                   {chat.lastTime && (
                     <span className="text-[10px] text-muted-foreground">
@@ -237,13 +234,10 @@ export default function Atendimento() {
                 </div>
                 <p className="text-xs text-muted-foreground truncate mt-0.5">{chat.lastMessage}</p>
                 <div className="flex items-center gap-1 mt-1">
-                  <Badge variant="outline" className="text-[9px] px-1 py-0 border-emerald-500/30 text-emerald-400">
-                    {chat.status_funil || "Triagem"}
-                  </Badge>
                   {chat.bot_ativo ? (
-                    <Bot className="h-3 w-3 text-emerald-400" />
+                    <Bot className="h-3 w-3 text-primary" />
                   ) : (
-                    <User className="h-3 w-3 text-orange-400" />
+                    <User className="h-3 w-3 text-destructive" />
                   )}
                 </div>
               </div>
@@ -261,8 +255,8 @@ export default function Atendimento() {
           <>
             <div className="h-14 flex items-center justify-between px-4 border-b border-border bg-card/30">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <Phone className="h-4 w-4 text-emerald-400" />
+                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                  <Phone className="h-4 w-4 text-primary" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">{formatPhone(selectedChat)}</p>
@@ -283,7 +277,7 @@ export default function Atendimento() {
                         className={cn(
                           "max-w-[70%] rounded-2xl px-4 py-2 text-sm",
                           isOut
-                            ? "bg-emerald-600 text-white rounded-br-sm"
+                            ? "bg-primary text-primary-foreground rounded-br-sm"
                             : "bg-card border border-border rounded-bl-sm"
                         )}
                       >
@@ -295,7 +289,7 @@ export default function Atendimento() {
                           <p className="whitespace-pre-wrap">{msg.conteudo}</p>
                         )}
                         {msg.created_at && (
-                          <p className={cn("text-[10px] mt-1", isOut ? "text-white/60" : "text-muted-foreground")}>
+                          <p className={cn("text-[10px] mt-1", isOut ? "text-primary-foreground/60" : "text-muted-foreground")}>
                             {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
                           </p>
                         )}
@@ -313,7 +307,7 @@ export default function Atendimento() {
                   variant="ghost"
                   size="icon"
                   onClick={isRecording ? stopRecording : startRecording}
-                  className={cn(isRecording && "text-red-500 animate-pulse")}
+                  className={cn(isRecording && "text-destructive animate-pulse")}
                 >
                   {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                 </Button>
@@ -324,7 +318,7 @@ export default function Atendimento() {
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
                   className="flex-1 bg-background/50"
                 />
-                <Button onClick={sendMessage} size="icon" className="bg-emerald-600 hover:bg-emerald-700">
+                <Button onClick={sendMessage} size="icon" className="bg-primary hover:bg-primary/90">
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
@@ -342,8 +336,8 @@ export default function Atendimento() {
         {currentChat ? (
           <>
             <div className="text-center">
-              <div className="h-16 w-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-2">
-                <Phone className="h-6 w-6 text-emerald-400" />
+              <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-2">
+                <Phone className="h-6 w-6 text-primary" />
               </div>
               <p className="font-medium text-sm">{formatPhone(selectedChat || "")}</p>
               <Badge
@@ -351,8 +345,8 @@ export default function Atendimento() {
                 className={cn(
                   "mt-1",
                   currentChat.bot_ativo
-                    ? "border-emerald-500/50 text-emerald-400"
-                    : "border-orange-500/50 text-orange-400"
+                    ? "border-primary/50 text-primary"
+                    : "border-destructive/50 text-destructive"
                 )}
               >
                 {currentChat.bot_ativo ? "🤖 Bot Ativo" : "👤 Humano"}
@@ -363,12 +357,8 @@ export default function Atendimento() {
             <Button
               onClick={toggleBot}
               disabled={loadingBot}
-              className={cn(
-                "w-full font-bold text-sm py-5",
-                currentChat.bot_ativo
-                  ? "bg-orange-600 hover:bg-orange-700 text-white"
-                  : "bg-emerald-600 hover:bg-emerald-700 text-white"
-              )}
+              variant={currentChat.bot_ativo ? "destructive" : "default"}
+              className="w-full font-bold text-sm py-5"
             >
               {currentChat.bot_ativo ? (
                 <>
@@ -382,23 +372,27 @@ export default function Atendimento() {
             </Button>
 
             <div className="border-t border-border pt-4 space-y-3">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status do Lead</h4>
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Informações</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Funil</span>
-                  <Badge variant="secondary">{currentChat.status_funil || "Triagem"}</Badge>
+                  <span className="text-muted-foreground">Status Bot</span>
+                  <Badge variant="secondary">{currentChat.bot_ativo ? "Ativo" : "Pausado"}</Badge>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Origem</span>
-                  <span className="text-foreground">{currentChat.modulo_origem || "Resolva Já"}</span>
-                </div>
+                {currentChat.last_intercept && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Última interação</span>
+                    <span className="text-foreground text-xs">
+                      {format(new Date(currentChat.last_intercept), "dd/MM HH:mm")}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="border-t border-border pt-4">
               <Button
                 variant="outline"
-                className="w-full border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                className="w-full"
                 onClick={() => {
                   toast({ title: "Criar processo a partir do lead", description: "Funcionalidade em desenvolvimento" });
                 }}
