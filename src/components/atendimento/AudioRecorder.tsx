@@ -105,11 +105,13 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const sendRecording = () => {
     if (!mediaRecorderRef.current) return;
     const recorder = mediaRecorderRef.current;
+    const usedMime = recorder.mimeType;
     recorder.onstop = async () => {
-      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const blob = new Blob(chunksRef.current, { type: usedMime });
+      const extension = usedMime.includes("ogg") ? ".ogg" : ".webm";
       setSending(true);
       try {
-        await onSend(blob);
+        await onSend(blob, extension);
       } finally {
         setSending(false);
       }
