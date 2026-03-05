@@ -4,7 +4,7 @@ import { Mic, MicOff, Send, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AudioRecorderProps {
-  onSend: (blob: Blob) => Promise<void>;
+  onSend: (blob: Blob, extension: string) => Promise<void>;
   disabled?: boolean;
 }
 
@@ -48,7 +48,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      const mimeType = "audio/webm; codecs=opus";
+      const mimeType = MediaRecorder.isTypeSupported("audio/ogg; codecs=opus")
+        ? "audio/ogg; codecs=opus"
+        : "audio/webm; codecs=opus";
       const recorder = new MediaRecorder(stream, { mimeType });
       chunksRef.current = [];
       recorder.ondataavailable = (e) => {
@@ -103,11 +105,13 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const sendRecording = () => {
     if (!mediaRecorderRef.current) return;
     const recorder = mediaRecorderRef.current;
+    const usedMime = recorder.mimeType;
     recorder.onstop = async () => {
-      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const blob = new Blob(chunksRef.current, { type: usedMime });
+      const extension = usedMime.includes("ogg") ? ".ogg" : ".webm";
       setSending(true);
       try {
-        await onSend(blob);
+        await onSend(blob, extension);
       } finally {
         setSending(false);
       }
