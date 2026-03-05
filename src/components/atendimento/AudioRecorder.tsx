@@ -48,7 +48,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      const mimeType = "audio/webm; codecs=opus";
+      const mimeType = MediaRecorder.isTypeSupported("audio/ogg; codecs=opus")
+        ? "audio/ogg; codecs=opus"
+        : "audio/webm; codecs=opus";
       const recorder = new MediaRecorder(stream, { mimeType });
       chunksRef.current = [];
       recorder.ondataavailable = (e) => {
