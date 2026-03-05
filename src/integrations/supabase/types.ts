@@ -322,6 +322,7 @@ export type Database = {
           created_at: string | null
           direcao: string | null
           id: string
+          origem: string | null
           tipo_midia: string | null
           whatsapp_id: string | null
         }
@@ -330,6 +331,7 @@ export type Database = {
           created_at?: string | null
           direcao?: string | null
           id?: string
+          origem?: string | null
           tipo_midia?: string | null
           whatsapp_id?: string | null
         }
@@ -338,6 +340,7 @@ export type Database = {
           created_at?: string | null
           direcao?: string | null
           id?: string
+          origem?: string | null
           tipo_midia?: string | null
           whatsapp_id?: string | null
         }
