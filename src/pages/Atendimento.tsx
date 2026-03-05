@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manual-aw";
+
 interface Chat {
   whatsapp_numero: string;
   bot_ativo: boolean | null;
@@ -26,6 +28,7 @@ interface Mensagem {
   whatsapp_id: string | null;
   conteudo: string | null;
   direcao: string | null;
+  origem: string | null;
   tipo_midia: string | null;
   created_at: string | null;
 }
@@ -39,6 +42,7 @@ export default function Atendimento() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [loadingBot, setLoadingBot] = useState(false);
+  const [sending, setSending] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -127,16 +131,28 @@ export default function Atendimento() {
     setLoadingBot(false);
   };
 
-  // Send text message
+  // Send text message via n8n webhook
   const sendMessage = async () => {
-    if (!newMsg.trim() || !selectedChat) return;
-    await supabase.from("historico_mensagens").insert({
-      whatsapp_id: selectedChat,
-      conteudo: newMsg,
-      direcao: "saida",
-      tipo_midia: "texto",
-    });
-    setNewMsg("");
+    if (!newMsg.trim() || !selectedChat || sending) return;
+    setSending(true);
+    try {
+      const response = await fetch(N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "text",
+          numero: selectedChat,
+          mensagem: newMsg,
+        }),
+      });
+      if (!response.ok) throw new Error("Webhook error");
+      setNewMsg("");
+      toast({ title: "Mensagem enviada!" });
+    } catch {
+      toast({ title: "Erro ao enviar mensagem", variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
   };
 
   // Audio recording
@@ -150,17 +166,27 @@ export default function Atendimento() {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const filename = `${selectedChat}/${Date.now()}.webm`;
         const { error } = await supabase.storage
-          .from("chat-audio")
+          .from("mensagens_audio")
           .upload(filename, blob, { contentType: "audio/webm" });
         if (!error) {
-          const { data: urlData } = supabase.storage.from("chat-audio").getPublicUrl(filename);
-          await supabase.from("historico_mensagens").insert({
-            whatsapp_id: selectedChat,
-            conteudo: urlData.publicUrl,
-            direcao: "saida",
-            tipo_midia: "audio",
-          });
-          toast({ title: "Áudio enviado!" });
+          const { data: urlData } = supabase.storage.from("mensagens_audio").getPublicUrl(filename);
+          try {
+            const response = await fetch(N8N_WEBHOOK_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tipo: "audio",
+                numero: selectedChat,
+                audioUrl: urlData.publicUrl,
+              }),
+            });
+            if (!response.ok) throw new Error("Webhook error");
+            toast({ title: "Áudio enviado!" });
+          } catch {
+            toast({ title: "Erro ao enviar áudio", variant: "destructive" });
+          }
+        } else {
+          toast({ title: "Erro ao fazer upload do áudio", variant: "destructive" });
         }
         stream.getTracks().forEach((t) => t.stop());
       };
@@ -186,6 +212,12 @@ export default function Atendimento() {
       return `(${id.slice(0, 2)}) ${id.slice(2, 7)}-${id.slice(7, 11)}`;
     }
     return id;
+  };
+
+  // Determine if message is outgoing based on origem
+  const isOutgoing = (msg: Mensagem) => {
+    const origem = msg.origem?.toLowerCase();
+    return origem === "bot" || origem === "advogado";
   };
 
   return (
@@ -270,17 +302,22 @@ export default function Atendimento() {
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-3">
                 {mensagens.map((msg) => {
-                  const isOut = msg.direcao === "saida";
+                  const outgoing = isOutgoing(msg);
                   return (
-                    <div key={msg.id} className={cn("flex", isOut ? "justify-end" : "justify-start")}>
+                    <div key={msg.id} className={cn("flex", outgoing ? "justify-end" : "justify-start")}>
                       <div
                         className={cn(
                           "max-w-[70%] rounded-2xl px-4 py-2 text-sm",
-                          isOut
+                          outgoing
                             ? "bg-primary text-primary-foreground rounded-br-sm"
-                            : "bg-card border border-border rounded-bl-sm"
+                            : "bg-muted text-muted-foreground rounded-bl-sm"
                         )}
                       >
+                        {msg.origem && (
+                          <p className={cn("text-[9px] font-semibold uppercase mb-0.5", outgoing ? "text-primary-foreground/70" : "text-muted-foreground/70")}>
+                            {msg.origem}
+                          </p>
+                        )}
                         {msg.tipo_midia === "audio" ? (
                           <audio controls src={msg.conteudo || ""} className="max-w-full" />
                         ) : msg.tipo_midia === "imagem" || msg.tipo_midia === "image" ? (
@@ -289,7 +326,7 @@ export default function Atendimento() {
                           <p className="whitespace-pre-wrap">{msg.conteudo}</p>
                         )}
                         {msg.created_at && (
-                          <p className={cn("text-[10px] mt-1", isOut ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                          <p className={cn("text-[10px] mt-1", outgoing ? "text-primary-foreground/60" : "text-muted-foreground/60")}>
                             {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
                           </p>
                         )}
@@ -317,8 +354,9 @@ export default function Atendimento() {
                   onChange={(e) => setNewMsg(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
                   className="flex-1 bg-background/50"
+                  disabled={sending}
                 />
-                <Button onClick={sendMessage} size="icon" className="bg-primary hover:bg-primary/90">
+                <Button onClick={sendMessage} size="icon" className="bg-primary hover:bg-primary/90" disabled={sending}>
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
@@ -353,7 +391,6 @@ export default function Atendimento() {
               </Badge>
             </div>
 
-            {/* Bot toggle button */}
             <Button
               onClick={toggleBot}
               disabled={loadingBot}
@@ -361,13 +398,9 @@ export default function Atendimento() {
               className="w-full font-bold text-sm py-5"
             >
               {currentChat.bot_ativo ? (
-                <>
-                  <BotOff className="h-4 w-4 mr-2" /> TRAVAR ROBÔ
-                </>
+                <><BotOff className="h-4 w-4 mr-2" /> TRAVAR ROBÔ</>
               ) : (
-                <>
-                  <Bot className="h-4 w-4 mr-2" /> REATIVAR ROBÔ
-                </>
+                <><Bot className="h-4 w-4 mr-2" /> REATIVAR ROBÔ</>
               )}
             </Button>
 
