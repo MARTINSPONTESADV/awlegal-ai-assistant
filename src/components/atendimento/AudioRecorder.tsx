@@ -30,9 +30,8 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   }, []);
 
   const startRecording = async () => {
-    // Only reset the chunks array — do NOT touch stream/recorder refs
-    // (the previous session's onstop handles its own cleanup after processing)
-    chunksRef.current = [];
+    // Do NOT cleanup old refs — just overwrite them with new instances.
+    // The previous onstop handler holds its own captured references.
     setSending(false);
     setElapsed(0);
 
@@ -61,7 +60,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
         : new MediaRecorder(stream);
 
       console.log("[AudioRecorder] mimeType:", recorder.mimeType);
-      chunksRef.current = [];
+      chunksRef.current = []; // Fresh array for this session
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -113,13 +112,10 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+    // Only stop mic tracks — let GC handle the rest
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
     }
-    mediaRecorderRef.current = null;
-    analyserRef.current = null;
-    chunksRef.current = [];
     setIsRecording(false);
     setSending(false);
     setElapsed(0);
@@ -140,6 +136,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     setIsRecording(false);
     setElapsed(0);
 
+    // Capture the stream reference for THIS session so cleanup is isolated
+    const sessionStream = streamRef.current;
+
     recorder.onstop = async () => {
       const chunks = [...chunksRef.current];
       const duration = Date.now() - startTimeRef.current;
@@ -148,11 +147,8 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
 
       if (rawBlob.size === 0) {
         console.error("[AudioRecorder] Blob vazio. Upload abortado.");
-        // Cleanup only AFTER we confirmed blob is empty
-        if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
-        mediaRecorderRef.current = null;
-        analyserRef.current = null;
-        chunksRef.current = [];
+        // Only stop mic tracks — don't nullify anything
+        if (sessionStream) sessionStream.getTracks().forEach((t) => t.stop());
         setSending(false);
         return;
       }
@@ -165,14 +161,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       } catch (err) {
         console.error("[AudioRecorder] Erro no upload:", err);
       } finally {
-        // === CLEANUP ONLY AFTER fix-webm-duration + upload are 100% done ===
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach((t) => t.stop());
-          streamRef.current = null;
-        }
-        mediaRecorderRef.current = null;
-        analyserRef.current = null;
-        chunksRef.current = [];
+        // Only stop the mic tracks. Do NOT nullify refs or clear chunks.
+        // Let startRecording overwrite them and GC handle the rest.
+        if (sessionStream) sessionStream.getTracks().forEach((t) => t.stop());
         setSending(false);
       }
     };
@@ -181,10 +172,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       recorder.stop();
     } catch (e) {
       console.error("[AudioRecorder] Erro ao parar:", e);
-      if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
-      mediaRecorderRef.current = null;
-      analyserRef.current = null;
-      chunksRef.current = [];
+      if (sessionStream) sessionStream.getTracks().forEach((t) => t.stop());
       setSending(false);
     }
   };
