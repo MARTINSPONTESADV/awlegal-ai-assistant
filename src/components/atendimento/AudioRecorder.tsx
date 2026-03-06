@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Send, X } from "lucide-react";
 
@@ -23,7 +23,6 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     return () => { cleanup(); };
   }, []);
 
-  // Simple cleanup — stops timers/animation and releases stream
   const cleanup = () => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
@@ -36,15 +35,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     chunksRef.current = [];
   };
 
+  // Called directly from onClick — user gesture preserved
   const startRecording = async () => {
-    // Always force cleanup before starting a new recording
-    forceCleanup();
-    setIsRecording(false);
-    setSending(false);
-    setElapsed(0);
-
     try {
-      console.log("[AudioRecorder] Solicitando microfone...");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
       });
@@ -57,8 +50,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      const mimeType = "audio/ogg; codecs=opus";
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/ogg; codecs=opus" });
       chunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -70,10 +62,14 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       setElapsed(0);
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
       drawWaveform();
-      console.log("[AudioRecorder] Gravação iniciada com sucesso.");
-    } catch (err) {
-      console.error("[AudioRecorder] Erro ao iniciar gravação:", err);
-      forceCleanup();
+    } catch (err: unknown) {
+      const name = err instanceof Error ? err.name : "";
+      if (name === "NotAllowedError") {
+        alert("Acesso ao microfone negado. Verifique as permissões do navegador.");
+      } else {
+        alert("Erro ao acessar o microfone. Tente novamente.");
+      }
+      cleanup();
       setIsRecording(false);
       setSending(false);
       setElapsed(0);
@@ -105,9 +101,8 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   };
 
   const cancelRecording = () => {
-    console.log("[AudioRecorder] Gravação cancelada pelo usuário.");
     try { mediaRecorderRef.current?.stop(); } catch {}
-    forceCleanup();
+    cleanup();
     setIsRecording(false);
     setSending(false);
     setElapsed(0);
@@ -116,8 +111,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const sendRecording = () => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === "inactive") {
-      console.warn("[AudioRecorder] Recorder inativo ou null, resetando tudo.");
-      forceCleanup();
+      cleanup();
       setIsRecording(false);
       setSending(false);
       setElapsed(0);
@@ -130,23 +124,22 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     setIsRecording(false);
     setElapsed(0);
 
-    // Safety timeout: if onstop never fires, force reset after 5s
-    const safetyTimeout = setTimeout(() => {
-      console.error("[AudioRecorder] SAFETY TIMEOUT: onstop não disparou em 5s. Forçando reset.");
-      forceCleanup();
-      setSending(false);
-    }, 5000);
-
     recorder.onstop = async () => {
-      clearTimeout(safetyTimeout);
-      const chunks = [...chunksRef.current]; // snapshot before any cleanup
-      console.log("[AudioRecorder] onstop — chunks:", chunks.length);
+      const chunks = [...chunksRef.current];
       const blob = new Blob(chunks, { type: "audio/ogg; codecs=opus" });
-      console.log("[AudioRecorder] Blob final:", blob.size, "bytes");
+      console.log("[AudioRecorder] Blob:", blob.size, "bytes, chunks:", chunks.length);
+
+      // Release hardware immediately after blob is created
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      mediaRecorderRef.current = null;
+      analyserRef.current = null;
+      chunksRef.current = [];
 
       if (blob.size === 0) {
         console.error("[AudioRecorder] Blob vazio. Upload abortado.");
-        forceCleanup();
         setSending(false);
         return;
       }
@@ -154,32 +147,23 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       setSending(true);
       try {
         await onSend(blob, ".ogg");
-        console.log("[AudioRecorder] Upload concluído com sucesso.");
       } catch (err) {
         console.error("[AudioRecorder] Erro no upload:", err);
       } finally {
-        // ALWAYS cleanup and unlock button
-        forceCleanup();
         setSending(false);
-        console.log("[AudioRecorder] Hardware liberado. Botão desbloqueado.");
       }
     };
 
     try {
       recorder.stop();
     } catch (e) {
-      clearTimeout(safetyTimeout);
-      console.error("[AudioRecorder] Erro ao parar recorder:", e);
-      forceCleanup();
+      console.error("[AudioRecorder] Erro ao parar:", e);
+      cleanup();
       setSending(false);
     }
   };
 
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, "0")}`;
-  };
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
   if (isRecording) {
     return (
