@@ -158,12 +158,43 @@ export default function Atendimento() {
   // Audio upload handler — ONLY audio, called exclusively by AudioRecorder
   const handleAudioSend = async (blob: Blob, _extension: string = ".ogg") => {
     if (!selectedChat) return;
-    console.log("[Atendimento] Enviando ÁUDIO — tipo: audio, numero:", selectedChat, "blob size:", blob.size);
-    const cleanBlob = new Blob([blob], { type: "audio/ogg; codecs=opus" });
+    console.log("[Atendimento] Enviando ÁUDIO — tipo: audio, numero:", selectedChat, "blob size:", blob.size, "type:", blob.type);
+
+    // Convert WebM → real OGG Opus via edge function if browser produced WebM
+    let finalBlob = blob;
+    const needsConversion = !blob.type.includes("ogg");
+    if (needsConversion) {
+      console.log("[Atendimento] Blob é WebM, convertendo para OGG Opus via edge function...");
+      toast({ title: "Convertendo áudio para formato WhatsApp..." });
+      try {
+        const convForm = new FormData();
+        convForm.append("file", blob, "recording.webm");
+        const convRes = await supabase.functions.invoke("convert-audio-ogg", {
+          body: convForm,
+        });
+        if (convRes.error) throw new Error(convRes.error.message || "Conversion failed");
+        // supabase.functions.invoke returns data as Blob when response is binary
+        if (convRes.data instanceof Blob) {
+          finalBlob = convRes.data;
+        } else {
+          // If returned as ArrayBuffer or other
+          finalBlob = new Blob([convRes.data], { type: "audio/ogg; codecs=opus" });
+        }
+        console.log("[Atendimento] Conversão OK, novo blob size:", finalBlob.size);
+      } catch (convErr) {
+        console.error("[Atendimento] Erro na conversão WebM→OGG:", convErr);
+        toast({ title: "Erro ao converter áudio. Enviando original.", variant: "destructive" });
+        // Fallback: send original blob
+        finalBlob = new Blob([blob], { type: "audio/ogg; codecs=opus" });
+      }
+    } else {
+      finalBlob = new Blob([blob], { type: "audio/ogg; codecs=opus" });
+    }
+
     const filename = `${selectedChat}/${Date.now()}.ogg`;
     const { error } = await supabase.storage
       .from("mensagens_audio")
-      .upload(filename, cleanBlob, { contentType: "audio/ogg; codecs=opus" });
+      .upload(filename, finalBlob, { contentType: "audio/ogg; codecs=opus" });
     if (!error) {
       const { data: urlData } = supabase.storage.from("mensagens_audio").getPublicUrl(filename);
       try {
