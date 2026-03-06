@@ -82,6 +82,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
 
       setIsRecording(true);
       setElapsed(0);
+      startTimeRef.current = Date.now();
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
       drawWaveform();
     } catch (err: unknown) {
