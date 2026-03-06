@@ -29,7 +29,9 @@ interface Chat {
   whatsapp_numero: string;
   bot_ativo: boolean | null;
   last_intercept: string | null;
+  nome_contato: string | null;
   lastMessage?: string;
+  lastMessageType?: string;
   lastTime?: string;
 }
 
