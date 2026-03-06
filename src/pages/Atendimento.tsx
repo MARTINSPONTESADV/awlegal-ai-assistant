@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/sheet";
 import {
   Bot, BotOff, Send, Phone, User, Circle,
-  Search, Briefcase, Menu, Info,
+  Search, Briefcase, Menu, Info, Pencil, Check, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -29,7 +29,9 @@ interface Chat {
   whatsapp_numero: string;
   bot_ativo: boolean | null;
   last_intercept: string | null;
+  nome_contato: string | null;
   lastMessage?: string;
+  lastMessageType?: string;
   lastTime?: string;
 }
 
@@ -55,6 +57,8 @@ export default function Atendimento() {
   const [sending, setSending] = useState(false);
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [rightSheetOpen, setRightSheetOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [contactName, setContactName] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load chats from controle_bot
@@ -66,7 +70,7 @@ export default function Atendimento() {
           data.map(async (c) => {
             const { data: msgs } = await supabase
               .from("historico_mensagens")
-              .select("conteudo, created_at")
+              .select("conteudo, created_at, tipo_midia")
               .eq("whatsapp_id", c.whatsapp_numero)
               .order("created_at", { ascending: false })
               .limit(1);
@@ -74,7 +78,9 @@ export default function Atendimento() {
               whatsapp_numero: c.whatsapp_numero,
               bot_ativo: c.bot_ativo,
               last_intercept: c.last_intercept,
+              nome_contato: c.nome_contato || null,
               lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
+              lastMessageType: msgs?.[0]?.tipo_midia || "texto",
               lastTime: msgs?.[0]?.created_at || undefined,
             };
           })
@@ -120,6 +126,29 @@ export default function Atendimento() {
 
   const currentChat = chats.find((c) => c.whatsapp_numero === selectedChat);
 
+  // Sync contactName when selected chat changes
+  useEffect(() => {
+    if (currentChat) {
+      setContactName(currentChat.nome_contato || "");
+      setEditingName(false);
+    }
+  }, [selectedChat]);
+
+  const saveContactName = async () => {
+    if (!selectedChat) return;
+    const trimmed = contactName.trim();
+    await supabase
+      .from("controle_bot")
+      .update({ nome_contato: trimmed || null } as any)
+      .eq("whatsapp_numero", selectedChat);
+    setChats((prev) =>
+      prev.map((c) =>
+        c.whatsapp_numero === selectedChat ? { ...c, nome_contato: trimmed || null } : c
+      )
+    );
+    setEditingName(false);
+    toast({ title: trimmed ? `Contato renomeado para "${trimmed}"` : "Nome removido" });
+  };
   const toggleBot = async () => {
     if (!currentChat) return;
     setLoadingBot(true);
@@ -217,8 +246,17 @@ export default function Atendimento() {
   );
 
   const formatPhone = (id: string) => {
-    if (id.length >= 11) {
-      return `(${id.slice(0, 2)}) ${id.slice(2, 7)}-${id.slice(7, 11)}`;
+    // Full Brazilian number with country code: 5592999722659 (13 digits)
+    if (id.length === 13) {
+      return `+${id.slice(0, 2)} (${id.slice(2, 4)}) ${id.slice(4, 5)} ${id.slice(5, 9)}-${id.slice(9)}`;
+    }
+    // Brazilian number without country code: 92999722659 (11 digits)
+    if (id.length === 11) {
+      return `(${id.slice(0, 2)}) ${id.slice(2, 3)} ${id.slice(3, 7)}-${id.slice(7)}`;
+    }
+    // 10-digit landline
+    if (id.length === 10) {
+      return `(${id.slice(0, 2)}) ${id.slice(2, 6)}-${id.slice(6)}`;
     }
     return id;
   };
@@ -268,7 +306,7 @@ export default function Atendimento() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground truncate">
-                  {formatPhone(chat.whatsapp_numero)}
+                  {chat.nome_contato || formatPhone(chat.whatsapp_numero)}
                 </span>
                 {chat.lastTime && (
                   <span className="text-[10px] text-muted-foreground">
@@ -276,7 +314,9 @@ export default function Atendimento() {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground truncate mt-0.5">{chat.lastMessage}</p>
+              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                {chat.lastMessageType === "audio" ? "🎵 Áudio" : chat.lastMessage}
+              </p>
               <div className="flex items-center gap-1 mt-1">
                 {chat.bot_ativo ? (
                   <Bot className="h-3 w-3 text-primary" />
@@ -301,7 +341,36 @@ export default function Atendimento() {
         <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-2">
           <Phone className="h-6 w-6 text-primary" />
         </div>
-        <p className="font-medium text-sm">{formatPhone(selectedChat || "")}</p>
+        {editingName ? (
+          <div className="flex items-center gap-1 justify-center mt-1">
+            <Input
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              placeholder="Nome do contato"
+              className="h-8 text-sm text-center max-w-[180px]"
+              onKeyDown={(e) => e.key === "Enter" && saveContactName()}
+              autoFocus
+            />
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={saveContactName}>
+              <Check className="h-3.5 w-3.5 text-primary" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingName(false); setContactName(currentChat.nome_contato || ""); }}>
+              <X className="h-3.5 w-3.5 text-destructive" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-1 mt-1">
+            <p className="font-medium text-sm">
+              {currentChat.nome_contato || formatPhone(selectedChat || "")}
+            </p>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingName(true)}>
+              <Pencil className="h-3 w-3 text-muted-foreground" />
+            </Button>
+          </div>
+        )}
+        {currentChat.nome_contato && (
+          <p className="text-xs text-muted-foreground">{formatPhone(selectedChat || "")}</p>
+        )}
         <Badge
           variant="outline"
           className={cn(
@@ -396,7 +465,7 @@ export default function Atendimento() {
                   <Phone className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{formatPhone(selectedChat)}</p>
+                  <p className="text-sm font-medium">{currentChat?.nome_contato || formatPhone(selectedChat)}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {currentChat?.bot_ativo ? "🤖 Bot ativo" : "👤 Humano atendendo"}
                   </p>

@@ -287,16 +287,19 @@ export type Database = {
         Row: {
           bot_ativo: boolean | null
           last_intercept: string | null
+          nome_contato: string | null
           whatsapp_numero: string
         }
         Insert: {
           bot_ativo?: boolean | null
           last_intercept?: string | null
+          nome_contato?: string | null
           whatsapp_numero: string
         }
         Update: {
           bot_ativo?: boolean | null
           last_intercept?: string | null
+          nome_contato?: string | null
           whatsapp_numero?: string
         }
         Relationships: []
