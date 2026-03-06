@@ -27,12 +27,13 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   }, []);
 
   const stopEverything = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     mediaRecorderRef.current = null;
     streamRef.current = null;
     analyserRef.current = null;
+    chunksRef.current = [];
   };
 
   const startRecording = async () => {
