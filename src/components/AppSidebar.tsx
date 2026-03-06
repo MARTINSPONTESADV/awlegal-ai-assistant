@@ -36,6 +36,7 @@ const centralResolvaJa = [
 
 const comercialCrm = [
   { title: "Funil de Vendas", url: "/crm", icon: TrendingUp },
+  { title: "Financeiro", url: "/financeiro", icon: DollarSign },
 ];
 
 const configItems = [
