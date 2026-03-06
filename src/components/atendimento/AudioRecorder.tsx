@@ -37,10 +37,17 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
 
   // Called directly from onClick — user gesture preserved
   const startRecording = async () => {
+    // Reset stale hardware before requesting new mic access
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
+    setSending(false);
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
       const audioCtx = new AudioContext();
@@ -50,7 +57,18 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/ogg; codecs=opus" });
+      // Pick best supported mimeType, always prefer OGG
+      const mimeType = MediaRecorder.isTypeSupported("audio/ogg; codecs=opus")
+        ? "audio/ogg; codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm; codecs=opus")
+          ? "audio/webm; codecs=opus"
+          : "";
+
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      console.log("[AudioRecorder] mimeType:", recorder.mimeType);
       chunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -63,13 +81,13 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
       drawWaveform();
     } catch (err: unknown) {
-      const name = err instanceof Error ? err.name : "";
-      if (name === "NotAllowedError") {
-        alert("Acesso ao microfone negado. Verifique as permissões do navegador.");
-      } else {
-        alert("Erro ao acessar o microfone. Tente novamente.");
+      console.error("[AudioRecorder] Erro getUserMedia:", err);
+      // Clean up any partial state
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
       }
-      cleanup();
+      mediaRecorderRef.current = null;
       setIsRecording(false);
       setSending(false);
       setElapsed(0);
