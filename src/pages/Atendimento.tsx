@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/sheet";
 import {
   Bot, BotOff, Send, Phone, User, Circle,
-  Search, Briefcase, Menu, Info,
+  Search, Briefcase, Menu, Info, Pencil, Check, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
