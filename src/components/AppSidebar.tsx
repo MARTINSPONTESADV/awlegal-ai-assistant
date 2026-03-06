@@ -25,7 +25,6 @@ const hubJuridico = [
   { title: "Processos", url: "/processos", icon: Briefcase },
   { title: "Publicações", url: "/publicacoes", icon: Newspaper },
   { title: "Agenda", url: "/agenda", icon: CalendarDays },
-  { title: "Financeiro", url: "/financeiro", icon: DollarSign },
   { title: "Diligências", url: "/diligencias", icon: Search },
   { title: "Relatórios", url: "/relatorios", icon: BarChart3 },
   { title: "Gerador Docs", url: "/generator", icon: FileText },
