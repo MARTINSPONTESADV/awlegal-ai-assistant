@@ -60,7 +60,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
         : new MediaRecorder(stream);
 
       console.log("[AudioRecorder] mimeType:", recorder.mimeType);
-      chunksRef.current = [];
+      chunksRef.current = []; // Fresh array for this session
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
