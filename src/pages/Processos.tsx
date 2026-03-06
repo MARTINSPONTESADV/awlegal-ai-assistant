@@ -111,12 +111,29 @@ export default function Processos() {
           <Table>
             <TableHeader><TableRow><TableHead>Nº Processo</TableHead><TableHead>Cliente</TableHead><TableHead className="hidden md:table-cell">Partes Requeridas</TableHead><TableHead>Situação</TableHead><TableHead className="w-16">Ações</TableHead></TableRow></TableHeader>
             <TableBody>
-              {filtered.map((p) => (
+              {filtered.map((p) => {
+                const isAtivo = p.situacao === "Ativo" || p.situacao === "Suspenso" || (!p.situacao && p.status === "ativo");
+                const semMonitoramento = isAtivo && !p.capturar_andamentos;
+                return (
                 <TableRow key={p.id} className="cursor-pointer" onClick={() => navigate(`/processos/${p.id}`)}>
-                  <TableCell className="font-medium hover:underline">{p.numero_processo || p.numero_cnj || "—"}</TableCell>
+                  <TableCell className="font-medium hover:underline">
+                    <div className="flex items-center gap-2">
+                      {p.numero_processo || p.numero_cnj || "—"}
+                      {semMonitoramento && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">Sem monitoramento ativo (Capturar andamentos desabilitado)</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{p.clientes?.nome_completo ?? "—"}</TableCell>
                   <TableCell className="hidden md:table-cell">{p.partes_requeridas || "—"}</TableCell>
-                  <TableCell><Badge variant={(p.situacao === "Ativo" || p.status === "ativo") ? "default" : "secondary"}>{p.situacao || (p.status === "ativo" ? "Ativo" : "Arquivado")}</Badge></TableCell>
+                  <TableCell><Badge variant={(p.situacao === "Ativo" || p.situacao === "Suspenso" || p.status === "ativo") ? "default" : "secondary"}>{p.situacao || (p.status === "ativo" ? "Ativo" : "Arquivado")}</Badge></TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-1">
                       <Button size="icon" variant="ghost" onClick={() => navigate(`/processos/${p.id}`)}><Eye className="h-4 w-4" /></Button>
@@ -124,7 +141,8 @@ export default function Processos() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
               {filtered.length === 0 && (<TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum processo encontrado.</TableCell></TableRow>)}
             </TableBody>
           </Table>
