@@ -111,49 +111,53 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const sendRecording = () => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === "inactive") {
-      console.log("[AudioRecorder] Recorder inativo, resetando estado.");
+      console.log("[AudioRecorder] Recorder inativo, resetando.");
       stopEverything();
       setIsRecording(false);
       setElapsed(0);
       return;
     }
 
-    // Save chunks ref before cleanup nullifies it
-    const savedChunks = chunksRef.current;
+    // Stop timer and animation immediately (UI feedback)
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
+    setIsRecording(false);
+    setElapsed(0);
 
+    // onstop fires AFTER the final ondataavailable, so chunks are complete
     recorder.onstop = async () => {
-      const blob = new Blob(savedChunks, { type: "audio/ogg; codecs=opus" });
-      console.log("[AudioRecorder] Blob criado:", blob.size, "bytes, tipo:", blob.type);
+      console.log("[AudioRecorder] onstop disparado, chunks:", chunksRef.current.length);
+      const blob = new Blob(chunksRef.current, { type: "audio/ogg; codecs=opus" });
+      console.log("[AudioRecorder] Blob criado:", blob.size, "bytes");
+
+      // Release hardware AFTER blob is created
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      mediaRecorderRef.current = null;
+      streamRef.current = null;
+      analyserRef.current = null;
+      chunksRef.current = [];
+
       if (blob.size === 0) {
-        console.warn("[AudioRecorder] Blob vazio, envio cancelado.");
+        console.error("[AudioRecorder] Blob vazio — envio cancelado.");
         return;
       }
+
       setSending(true);
       try {
         await onSend(blob, ".ogg");
       } catch (err) {
-        console.error("[AudioRecorder] Erro ao enviar áudio:", err);
+        console.error("[AudioRecorder] Erro ao enviar:", err);
       } finally {
         setSending(false);
       }
     };
 
-    // Stop recorder first (triggers onstop asynchronously)
     try {
       recorder.stop();
     } catch (e) {
-      console.error("[AudioRecorder] Erro ao parar gravação:", e);
+      console.error("[AudioRecorder] Erro ao parar:", e);
+      stopEverything();
     }
-
-    // Release hardware immediately (but don't clear chunksRef — savedChunks holds reference)
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    mediaRecorderRef.current = null;
-    streamRef.current = null;
-    analyserRef.current = null;
-    setIsRecording(false);
-    setElapsed(0);
   };
 
   const formatTime = (s: number) => {
