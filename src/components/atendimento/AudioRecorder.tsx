@@ -61,8 +61,11 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       setElapsed(0);
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
       drawWaveform();
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("Erro ao iniciar gravação:", err);
+      stopEverything();
+      setIsRecording(false);
+      setElapsed(0);
     }
   };
 
@@ -94,7 +97,11 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   };
 
   const cancelRecording = () => {
-    mediaRecorderRef.current?.stop();
+    try {
+      mediaRecorderRef.current?.stop();
+    } catch (e) {
+      console.error("Erro ao cancelar gravação:", e);
+    }
     stopEverything();
     setIsRecording(false);
     setElapsed(0);
@@ -103,21 +110,29 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const sendRecording = () => {
     if (!mediaRecorderRef.current) return;
     const recorder = mediaRecorderRef.current;
-    const usedMime = recorder.mimeType;
     recorder.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: "audio/ogg; codecs=opus" });
       const extension = ".ogg";
       setSending(true);
       try {
         await onSend(blob, extension);
+      } catch (err) {
+        console.error("Erro ao enviar áudio:", err);
       } finally {
         setSending(false);
       }
     };
-    recorder.stop();
+    try {
+      recorder.stop();
+    } catch (e) {
+      console.error("Erro ao parar gravação:", e);
+    }
     if (timerRef.current) clearInterval(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaRecorderRef.current = null;
+    streamRef.current = null;
+    analyserRef.current = null;
     setIsRecording(false);
     setElapsed(0);
   };
