@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Send, X } from "lucide-react";
+import fixWebmDuration from "fix-webm-duration";
 
 interface AudioRecorderProps {
   onSend: (blob: Blob, extension: string) => Promise<void>;
