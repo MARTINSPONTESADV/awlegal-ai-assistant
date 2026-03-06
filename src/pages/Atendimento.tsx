@@ -150,23 +150,48 @@ export default function Atendimento() {
     toast({ title: trimmed ? `Contato renomeado para "${trimmed}"` : "Nome removido" });
   };
   const toggleBot = async () => {
-    if (!currentChat) return;
+    if (!currentChat || !selectedChat) return;
     setLoadingBot(true);
-    const newVal = !currentChat.bot_ativo;
-    await supabase
-      .from("controle_bot")
-      .update({ bot_ativo: newVal })
-      .eq("whatsapp_numero", currentChat.whatsapp_numero);
-    setChats((prev) =>
-      prev.map((c) =>
-        c.whatsapp_numero === currentChat.whatsapp_numero ? { ...c, bot_ativo: newVal } : c
-      )
-    );
-    toast({
-      title: newVal ? "Robô Ativado" : "Robô Pausado — Humano Assumiu",
-      description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
-    });
-    setLoadingBot(false);
+    try {
+      // Check if record exists using the raw whatsapp_numero
+      const { data: existing } = await supabase
+        .from("controle_bot")
+        .select("bot_ativo")
+        .eq("whatsapp_numero", selectedChat)
+        .maybeSingle();
+
+      let newVal: boolean;
+
+      if (!existing) {
+        // Record doesn't exist — create it with bot_ativo = true, then allow toggle
+        newVal = false; // User wants to lock the bot
+        await supabase
+          .from("controle_bot")
+          .insert({ whatsapp_numero: selectedChat, bot_ativo: newVal } as any);
+      } else {
+        newVal = !existing.bot_ativo;
+        const { error } = await supabase
+          .from("controle_bot")
+          .update({ bot_ativo: newVal })
+          .eq("whatsapp_numero", selectedChat);
+        if (error) throw error;
+      }
+
+      setChats((prev) =>
+        prev.map((c) =>
+          c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: newVal } : c
+        )
+      );
+      toast({
+        title: newVal ? "Robô Ativado" : "Robô Pausado — Humano Assumiu",
+        description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
+      });
+    } catch (err) {
+      console.error("[toggleBot] error:", err);
+      toast({ title: "Erro ao alterar status do robô", variant: "destructive" });
+    } finally {
+      setLoadingBot(false);
+    }
   };
 
   const sendMessage = async () => {
