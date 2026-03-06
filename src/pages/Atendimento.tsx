@@ -130,9 +130,10 @@ export default function Atendimento() {
     setLoadingBot(false);
   };
 
-  // Send text message via n8n webhook
+  // Send text message via n8n webhook — ONLY text, never audio
   const sendMessage = async () => {
     if (!newMsg.trim() || !selectedChat || sending) return;
+    console.log("[Atendimento] Enviando TEXTO — tipo: text, numero:", selectedChat);
     setSending(true);
     try {
       const response = await fetch(N8N_WEBHOOK_URL, {
