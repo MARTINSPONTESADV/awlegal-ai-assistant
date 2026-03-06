@@ -17,7 +17,8 @@ interface Processo {
   partes_requeridas: string | null; status: string; situacao: string | null;
   valor_acordo: number | null; valor_execucao: number | null; valor_sentenca: number | null;
   status_pagamento_honorarios: string | null; prognostico: string | null; tipo_processo: string | null;
-  fase_id: string | null; aux_fases?: { nome: string } | null; clientes?: { nome_completo: string } | null;
+  fase_id: string | null; capturar_andamentos: boolean | null;
+  aux_fases?: { nome: string } | null; clientes?: { nome_completo: string } | null;
 }
 
 const FILTER_LABELS: Record<string, string> = {
