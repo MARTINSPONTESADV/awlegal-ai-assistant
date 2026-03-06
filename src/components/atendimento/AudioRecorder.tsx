@@ -19,7 +19,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const analyserRef = useRef<AnalyserNode | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number>(0);
-
+  const startTimeRef = useRef<number>(0);
   useEffect(() => {
     return () => { cleanup(); };
   }, []);
