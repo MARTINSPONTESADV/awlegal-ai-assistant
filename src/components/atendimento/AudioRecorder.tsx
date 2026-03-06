@@ -55,7 +55,8 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-      recorder.start();
+      // Use timeslice to accumulate chunks progressively during recording
+      recorder.start(250);
       mediaRecorderRef.current = recorder;
 
       setIsRecording(true);
@@ -126,30 +127,39 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
 
     // onstop fires AFTER the final ondataavailable, so chunks are complete
     recorder.onstop = async () => {
-      console.log("[AudioRecorder] onstop disparado, chunks:", chunksRef.current.length);
+      console.log("[AudioRecorder] onstop — chunks acumulados:", chunksRef.current.length);
       const blob = new Blob(chunksRef.current, { type: "audio/ogg; codecs=opus" });
-      console.log("[AudioRecorder] Blob criado:", blob.size, "bytes");
+      console.log("[AudioRecorder] Blob final:", blob.size, "bytes");
 
-      // Release hardware AFTER blob is created
+      if (blob.size === 0) {
+        console.error("[AudioRecorder] ERRO: Blob vazio (0 bytes). Upload abortado.");
+        // Cleanup on failure
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        mediaRecorderRef.current = null;
+        streamRef.current = null;
+        analyserRef.current = null;
+        chunksRef.current = [];
+        return;
+      }
+
+      // 1) Upload FIRST while blob is valid
+      setSending(true);
+      try {
+        await onSend(blob, ".ogg");
+        console.log("[AudioRecorder] Upload concluído com sucesso.");
+      } catch (err) {
+        console.error("[AudioRecorder] Erro no upload:", err);
+      } finally {
+        setSending(false);
+      }
+
+      // 2) Cleanup hardware ONLY after upload completes
       streamRef.current?.getTracks().forEach((t) => t.stop());
       mediaRecorderRef.current = null;
       streamRef.current = null;
       analyserRef.current = null;
       chunksRef.current = [];
-
-      if (blob.size === 0) {
-        console.error("[AudioRecorder] Blob vazio — envio cancelado.");
-        return;
-      }
-
-      setSending(true);
-      try {
-        await onSend(blob, ".ogg");
-      } catch (err) {
-        console.error("[AudioRecorder] Erro ao enviar:", err);
-      } finally {
-        setSending(false);
-      }
+      console.log("[AudioRecorder] Hardware liberado após upload.");
     };
 
     try {
