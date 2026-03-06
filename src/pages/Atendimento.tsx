@@ -161,7 +161,7 @@ export default function Atendimento() {
     const filename = `${selectedChat}/${Date.now()}.ogg`;
     const { error } = await supabase.storage
       .from("mensagens_audio")
-      .upload(filename, blob, { contentType });
+      .upload(filename, cleanBlob, { contentType: "audio/ogg" });
     if (!error) {
       const { data: urlData } = supabase.storage.from("mensagens_audio").getPublicUrl(filename);
       try {
