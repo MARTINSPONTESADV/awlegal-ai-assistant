@@ -174,7 +174,7 @@ export default function Atendimento() {
             tipo: "audio",
             numero: selectedChat,
             audioUrl: urlData.publicUrl,
-            ptt: true,
+            options: { ptt: true },
           }),
         });
         if (!response.ok) throw new Error("Webhook error");
