@@ -5,6 +5,7 @@ import { SpotlightCard } from "@/components/SpotlightCard";
 import { DonutChart } from "@/components/DonutChart";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DollarSign, TrendingUp, Handshake, CheckCircle2, Clock,
   Archive, Briefcase, ExternalLink, Scale, Info, ShieldCheck, Sparkles,
@@ -12,6 +13,7 @@ import {
 import {
   fmtBRL, calcEscritorio, calcRepasse, isProcessoEncerrado, type ProcessoFinanceiro,
 } from "@/lib/financeiro";
+import MetricasAvancadas from "@/components/MetricasAvancadas";
 
 export default function Financeiro() {
   const navigate = useNavigate();
@@ -123,65 +125,78 @@ export default function Financeiro() {
   return (
     <>
       <h2 className="font-display text-3xl font-bold mb-6">Financeiro</h2>
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-4">
-        <TopCard label="Receita Garantida (A Receber)" value={receitaGarantida} icon={ShieldCheck} color="hsl(142, 71%, 45%)" filtro="areceber" tooltip="Valores líquidos do escritório já certos: parte dos Acordos + Execuções pendentes." />
-        <TopCard label="Expectativa de Receita" value={expectativaReceita} icon={Sparkles} color="hsl(45, 80%, 50%)" filtro="sentencas_tramitando" tooltip="Valores líquidos de sentenças não transitadas em julgado — expectativa de direito." />
-        <TopCard label="Total Recebido Histórico" value={totalRecebidoEscritorio} icon={CheckCircle2} color="hsl(210, 80%, 55%)" filtro="recebidos" />
-      </div>
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-2">
-        <DetailCard label="A Receber: Acordos" escritorio={escritorioAcordos} bruto={brutoAcordos} repasse={repasseAcordos} icon={Handshake} color="hsl(260, 60%, 55%)" filtro="acordos_receber" />
-        <DetailCard label="A Receber: Execuções" escritorio={escritorioExecucoes} bruto={brutoExecucoes} repasse={repasseExecucoes} icon={TrendingUp} color="hsl(200, 60%, 50%)" filtro="execucoes_receber" />
-        <DetailCard label="Expectativa: Sentenças" escritorio={escritorioSentencas} bruto={brutoSentencas} repasse={repasseSentencas} icon={Scale} color="hsl(30, 80%, 50%)" filtro="sentencas_tramitando" />
-      </div>
-      <p className="text-xs text-muted-foreground mb-6 ml-1">Receita Garantida = Acordos + Execuções (parte do escritório) &nbsp;|&nbsp; Valores exibidos são a parte líquida do escritório.</p>
-      <h3 className="font-display text-lg font-semibold mb-3 text-muted-foreground">Raio-X da Carteira — Valor de Causa</h3>
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 mb-8">
-        <StaticCard label="Causa Total" value={causaTotal} icon={DollarSign} color="hsl(180, 50%, 45%)" />
-        <StaticCard label="Causa Ativo" value={causaAtivo} icon={Briefcase} color="hsl(142, 71%, 45%)" />
-        <StaticCard label="Causa Inativo" value={causaInativo} icon={Archive} color="hsl(0, 60%, 50%)" />
-      </div>
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2 mb-8">
-        <SpotlightCard><h3 className="font-display text-lg font-semibold mb-4">Receita: Recebido vs Garantido vs Expectativa</h3><DonutChart data={statusData} emptyMessage="Sem dados de pagamento" /></SpotlightCard>
-        <SpotlightCard><h3 className="font-display text-lg font-semibold mb-4">Composição por Categoria (Escritório)</h3><DonutChart data={categoriaData} emptyMessage="Sem dados de honorários" /></SpotlightCard>
-      </div>
-      <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        <SpotlightCard>
-          <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-[hsl(142,71%,45%)]" />Honorários Pagos</h3>
-          <div className="space-y-3 max-h-[400px] overflow-y-auto">
-            {pagos.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">Nenhum pagamento registrado</p>}
-            {pagos.map(p => { const base = Number(p.valor_execucao || 0) || Number(p.valor_acordo || 0); const escrit = calcEscritorio(base, pct(p)); return (
-              <div key={p.id} className="rounded-lg border border-border p-3 space-y-1">
-                <div className="flex justify-between items-center"><span className="text-sm font-medium truncate">{p.numero_cnj || p.numero_processo || "Sem número"}</span><Badge variant="default" className="shrink-0 text-xs">Pago</Badge></div>
-                <div className="flex justify-between text-xs text-muted-foreground"><span>{clientes[p.cliente_id] || "—"}</span><span className="font-medium text-foreground">{fmtBRL(escrit)}</span></div>
-              </div>
-            ); })}
+      <Tabs defaultValue="visao-geral" className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="visao-geral">Visão Geral</TabsTrigger>
+          <TabsTrigger value="metricas">Métricas Avançadas</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="visao-geral">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-4">
+            <TopCard label="Receita Garantida (A Receber)" value={receitaGarantida} icon={ShieldCheck} color="hsl(142, 71%, 45%)" filtro="areceber" tooltip="Valores líquidos do escritório já certos: parte dos Acordos + Execuções pendentes." />
+            <TopCard label="Expectativa de Receita" value={expectativaReceita} icon={Sparkles} color="hsl(45, 80%, 50%)" filtro="sentencas_tramitando" tooltip="Valores líquidos de sentenças não transitadas em julgado — expectativa de direito." />
+            <TopCard label="Total Recebido Histórico" value={totalRecebidoEscritorio} icon={CheckCircle2} color="hsl(210, 80%, 55%)" filtro="recebidos" />
           </div>
-        </SpotlightCard>
-        <SpotlightCard>
-          <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2"><TrendingUp className="h-5 w-5 text-[hsl(200,60%,50%)]" />A Receber: Execuções</h3>
-          <div className="space-y-3 max-h-[400px] overflow-y-auto">
-            {pendentesExecucoes.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">Nenhuma execução pendente</p>}
-            {pendentesExecucoes.map(p => { const escrit = calcEscritorio(Number(p.valor_execucao || 0), pct(p)); return (
-              <div key={p.id} className="rounded-lg border border-border p-3 space-y-1">
-                <div className="flex justify-between items-center"><span className="text-sm font-medium truncate">{p.numero_cnj || p.numero_processo || "Sem número"}</span><Badge variant="secondary" className="shrink-0 text-xs">{p.honorarios_percentual ? `${p.honorarios_percentual}%` : "—"}</Badge></div>
-                <div className="flex justify-between text-xs text-muted-foreground"><span>{clientes[p.cliente_id] || "—"}</span><span className="font-medium text-foreground">{fmtBRL(escrit)}</span></div>
-              </div>
-            ); })}
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-2">
+            <DetailCard label="A Receber: Acordos" escritorio={escritorioAcordos} bruto={brutoAcordos} repasse={repasseAcordos} icon={Handshake} color="hsl(260, 60%, 55%)" filtro="acordos_receber" />
+            <DetailCard label="A Receber: Execuções" escritorio={escritorioExecucoes} bruto={brutoExecucoes} repasse={repasseExecucoes} icon={TrendingUp} color="hsl(200, 60%, 50%)" filtro="execucoes_receber" />
+            <DetailCard label="Expectativa: Sentenças" escritorio={escritorioSentencas} bruto={brutoSentencas} repasse={repasseSentencas} icon={Scale} color="hsl(30, 80%, 50%)" filtro="sentencas_tramitando" />
           </div>
-        </SpotlightCard>
-        <SpotlightCard>
-          <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2"><Scale className="h-5 w-5 text-[hsl(30,80%,50%)]" />Expectativa: Sentenças</h3>
-          <div className="space-y-3 max-h-[400px] overflow-y-auto">
-            {sentencasTramitando.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">Nenhuma sentença tramitando</p>}
-            {sentencasTramitando.map(p => { const escrit = calcEscritorio(Number(p.valor_sentenca || 0), pct(p)); return (
-              <div key={p.id} className="rounded-lg border border-border p-3 space-y-1">
-                <div className="flex justify-between items-center"><span className="text-sm font-medium truncate">{p.numero_cnj || p.numero_processo || "Sem número"}</span><Badge variant="outline" className="shrink-0 text-xs">Tramitando</Badge></div>
-                <div className="flex justify-between text-xs text-muted-foreground"><span>{clientes[p.cliente_id] || "—"}</span><span className="font-medium text-foreground">{fmtBRL(escrit)}</span></div>
-              </div>
-            ); })}
+          <p className="text-xs text-muted-foreground mb-6 ml-1">Receita Garantida = Acordos + Execuções (parte do escritório) &nbsp;|&nbsp; Valores exibidos são a parte líquida do escritório.</p>
+          <h3 className="font-display text-lg font-semibold mb-3 text-muted-foreground">Raio-X da Carteira — Valor de Causa</h3>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 mb-8">
+            <StaticCard label="Causa Total" value={causaTotal} icon={DollarSign} color="hsl(180, 50%, 45%)" />
+            <StaticCard label="Causa Ativo" value={causaAtivo} icon={Briefcase} color="hsl(142, 71%, 45%)" />
+            <StaticCard label="Causa Inativo" value={causaInativo} icon={Archive} color="hsl(0, 60%, 50%)" />
           </div>
-        </SpotlightCard>
-      </div>
+          <div className="grid gap-6 grid-cols-1 lg:grid-cols-2 mb-8">
+            <SpotlightCard><h3 className="font-display text-lg font-semibold mb-4">Receita: Recebido vs Garantido vs Expectativa</h3><DonutChart data={statusData} emptyMessage="Sem dados de pagamento" /></SpotlightCard>
+            <SpotlightCard><h3 className="font-display text-lg font-semibold mb-4">Composição por Categoria (Escritório)</h3><DonutChart data={categoriaData} emptyMessage="Sem dados de honorários" /></SpotlightCard>
+          </div>
+          <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            <SpotlightCard>
+              <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-[hsl(142,71%,45%)]" />Honorários Pagos</h3>
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {pagos.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">Nenhum pagamento registrado</p>}
+                {pagos.map(p => { const base = Number(p.valor_execucao || 0) || Number(p.valor_acordo || 0); const escrit = calcEscritorio(base, pct(p)); return (
+                  <div key={p.id} className="rounded-lg border border-border p-3 space-y-1">
+                    <div className="flex justify-between items-center"><span className="text-sm font-medium truncate">{p.numero_cnj || p.numero_processo || "Sem número"}</span><Badge variant="default" className="shrink-0 text-xs">Pago</Badge></div>
+                    <div className="flex justify-between text-xs text-muted-foreground"><span>{clientes[p.cliente_id] || "—"}</span><span className="font-medium text-foreground">{fmtBRL(escrit)}</span></div>
+                  </div>
+                ); })}
+              </div>
+            </SpotlightCard>
+            <SpotlightCard>
+              <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2"><TrendingUp className="h-5 w-5 text-[hsl(200,60%,50%)]" />A Receber: Execuções</h3>
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {pendentesExecucoes.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">Nenhuma execução pendente</p>}
+                {pendentesExecucoes.map(p => { const escrit = calcEscritorio(Number(p.valor_execucao || 0), pct(p)); return (
+                  <div key={p.id} className="rounded-lg border border-border p-3 space-y-1">
+                    <div className="flex justify-between items-center"><span className="text-sm font-medium truncate">{p.numero_cnj || p.numero_processo || "Sem número"}</span><Badge variant="secondary" className="shrink-0 text-xs">{p.honorarios_percentual ? `${p.honorarios_percentual}%` : "—"}</Badge></div>
+                    <div className="flex justify-between text-xs text-muted-foreground"><span>{clientes[p.cliente_id] || "—"}</span><span className="font-medium text-foreground">{fmtBRL(escrit)}</span></div>
+                  </div>
+                ); })}
+              </div>
+            </SpotlightCard>
+            <SpotlightCard>
+              <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2"><Scale className="h-5 w-5 text-[hsl(30,80%,50%)]" />Expectativa: Sentenças</h3>
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {sentencasTramitando.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">Nenhuma sentença tramitando</p>}
+                {sentencasTramitando.map(p => { const escrit = calcEscritorio(Number(p.valor_sentenca || 0), pct(p)); return (
+                  <div key={p.id} className="rounded-lg border border-border p-3 space-y-1">
+                    <div className="flex justify-between items-center"><span className="text-sm font-medium truncate">{p.numero_cnj || p.numero_processo || "Sem número"}</span><Badge variant="outline" className="shrink-0 text-xs">Tramitando</Badge></div>
+                    <div className="flex justify-between text-xs text-muted-foreground"><span>{clientes[p.cliente_id] || "—"}</span><span className="font-medium text-foreground">{fmtBRL(escrit)}</span></div>
+                  </div>
+                ); })}
+              </div>
+            </SpotlightCard>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="metricas">
+          <MetricasAvancadas />
+        </TabsContent>
+      </Tabs>
     </>
   );
 }
