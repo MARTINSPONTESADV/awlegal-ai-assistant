@@ -149,10 +149,11 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
 
     recorder.onstop = async () => {
       const chunks = [...chunksRef.current];
-      const blob = new Blob(chunks, { type: "audio/ogg; codecs=opus" });
-      console.log("[AudioRecorder] Blob:", blob.size, "bytes, chunks:", chunks.length);
+      const rawBlob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      const duration = Date.now() - startTimeRef.current;
+      console.log("[AudioRecorder] Raw blob:", rawBlob.size, "bytes, duration:", duration, "ms, mimeType:", rawBlob.type);
 
-      // Release hardware immediately after blob is created
+      // Release hardware immediately
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
@@ -161,7 +162,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       analyserRef.current = null;
       chunksRef.current = [];
 
-      if (blob.size === 0) {
+      if (rawBlob.size === 0) {
         console.error("[AudioRecorder] Blob vazio. Upload abortado.");
         setSending(false);
         return;
@@ -169,7 +170,10 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
 
       setSending(true);
       try {
-        await onSend(blob, ".ogg");
+        // Fix WebM duration metadata so WhatsApp can read the file length
+        const fixedBlob = await fixWebmDuration(rawBlob, duration, { logger: false });
+        console.log("[AudioRecorder] Fixed blob:", fixedBlob.size, "bytes, type:", fixedBlob.type);
+        await onSend(fixedBlob, ".webm");
       } catch (err) {
         console.error("[AudioRecorder] Erro no upload:", err);
       } finally {
