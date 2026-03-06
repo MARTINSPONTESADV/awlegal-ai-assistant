@@ -12,14 +12,14 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const [isRecording, setIsRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [sending, setSending] = useState(false);
+
+  // Refs only for UI concerns (waveform, timer, cancel) — NOT for audio data
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number>(0);
-  const startTimeRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
@@ -30,8 +30,6 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   }, []);
 
   const startRecording = async () => {
-    // Do NOT cleanup old refs — just overwrite them with new instances.
-    // The previous onstop handler holds its own captured references.
     setSending(false);
     setElapsed(0);
 
@@ -60,24 +58,53 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
         : new MediaRecorder(stream);
 
       console.log("[AudioRecorder] mimeType:", recorder.mimeType);
-      chunksRef.current = []; // Fresh array for this session
+
+      // ===== CLOSURE-SCOPED DATA — isolated per recording session =====
+      const localChunks: Blob[] = [];
+      const localStartTime = Date.now();
+      const localStream = stream; // captured for cleanup after upload
+
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (e.data.size > 0) localChunks.push(e.data);
       };
+
+      recorder.onstop = async () => {
+        const rawBlob = new Blob(localChunks, { type: recorder.mimeType || "audio/webm" });
+        const duration = Date.now() - localStartTime;
+        console.log("[AudioRecorder] Raw blob:", rawBlob.size, "bytes, duration:", duration, "ms, mimeType:", rawBlob.type);
+
+        if (rawBlob.size === 0) {
+          console.error("[AudioRecorder] Blob vazio. Upload abortado.");
+          localStream.getTracks().forEach((t) => t.stop());
+          setSending(false);
+          return;
+        }
+
+        setSending(true);
+        try {
+          const fixedBlob = await fixWebmDuration(rawBlob, duration, { logger: false });
+          console.log("[AudioRecorder] Fixed blob:", fixedBlob.size, "bytes, type:", fixedBlob.type);
+          await onSend(fixedBlob, ".webm");
+        } catch (err) {
+          console.error("[AudioRecorder] Erro no upload:", err);
+        } finally {
+          // Stop mic ONLY after upload is 100% done
+          localStream.getTracks().forEach((t) => t.stop());
+          setSending(false);
+        }
+      };
+
       recorder.start(250);
       mediaRecorderRef.current = recorder;
 
       setIsRecording(true);
-      startTimeRef.current = Date.now();
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
       drawWaveform();
     } catch (err: unknown) {
       console.error("[AudioRecorder] Erro getUserMedia:", err);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
       }
-      mediaRecorderRef.current = null;
       setIsRecording(false);
       setSending(false);
       setElapsed(0);
@@ -112,7 +139,6 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
-    // Only stop mic tracks — let GC handle the rest
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
     }
@@ -136,43 +162,12 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     setIsRecording(false);
     setElapsed(0);
 
-    // Capture the stream reference for THIS session so cleanup is isolated
-    const sessionStream = streamRef.current;
-
-    recorder.onstop = async () => {
-      const chunks = [...chunksRef.current];
-      const duration = Date.now() - startTimeRef.current;
-      const rawBlob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-      console.log("[AudioRecorder] Raw blob:", rawBlob.size, "bytes, duration:", duration, "ms, mimeType:", rawBlob.type);
-
-      if (rawBlob.size === 0) {
-        console.error("[AudioRecorder] Blob vazio. Upload abortado.");
-        // Only stop mic tracks — don't nullify anything
-        if (sessionStream) sessionStream.getTracks().forEach((t) => t.stop());
-        setSending(false);
-        return;
-      }
-
-      setSending(true);
-      try {
-        const fixedBlob = await fixWebmDuration(rawBlob, duration, { logger: false });
-        console.log("[AudioRecorder] Fixed blob:", fixedBlob.size, "bytes, type:", fixedBlob.type);
-        await onSend(fixedBlob, ".webm");
-      } catch (err) {
-        console.error("[AudioRecorder] Erro no upload:", err);
-      } finally {
-        // Only stop the mic tracks. Do NOT nullify refs or clear chunks.
-        // Let startRecording overwrite them and GC handle the rest.
-        if (sessionStream) sessionStream.getTracks().forEach((t) => t.stop());
-        setSending(false);
-      }
-    };
-
+    // onstop handler is already bound via closure in startRecording
     try {
       recorder.stop();
     } catch (e) {
       console.error("[AudioRecorder] Erro ao parar:", e);
-      if (sessionStream) sessionStream.getTracks().forEach((t) => t.stop());
+      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
       setSending(false);
     }
   };
