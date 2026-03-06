@@ -161,33 +161,54 @@ export default function Atendimento() {
 
   const handleAudioSend = async (blob: Blob, extension: string = ".webm") => {
     if (!selectedChat) return;
-    console.log("[Atendimento] Enviando ÁUDIO — tipo: audio, numero:", selectedChat, "blob size:", blob.size, "type:", blob.type);
-    const contentType = blob.type || "audio/webm";
+
+    // Force contentType to audio/webm regardless of what the browser reports
+    const contentType = "audio/webm";
     const ext = extension.startsWith(".") ? extension : `.${extension}`;
     const filename = `${selectedChat}/${Date.now()}${ext}`;
-    const { error } = await supabase.storage
+
+    console.log("[Atendimento] UPLOAD START — file:", filename, "blob size:", blob.size, "forced contentType:", contentType);
+
+    // Step 1: Upload to Supabase and WAIT for full completion
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from("mensagens_audio")
-      .upload(filename, blob, { contentType });
-    if (!error) {
-      const { data: urlData } = supabase.storage.from("mensagens_audio").getPublicUrl(filename);
-      try {
-        const response = await fetch(N8N_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tipo: "audio",
-            numero: selectedChat,
-            audioUrl: urlData.publicUrl,
-            options: { ptt: true },
-          }),
-        });
-        if (!response.ok) throw new Error("Webhook error");
-        toast({ title: "Áudio enviado!" });
-      } catch {
-        toast({ title: "Erro ao enviar áudio", variant: "destructive" });
-      }
-    } else {
+      .upload(filename, blob, {
+        contentType,
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error("[Atendimento] UPLOAD FAILED:", uploadError);
       toast({ title: "Erro ao fazer upload do áudio", variant: "destructive" });
+      return; // STOP here — do NOT call webhook
+    }
+
+    console.log("[Atendimento] UPLOAD SUCCESS — path:", uploadData?.path);
+
+    // Step 2: Get public URL only AFTER confirmed upload
+    const { data: urlData } = supabase.storage.from("mensagens_audio").getPublicUrl(filename);
+    const publicUrl = urlData.publicUrl;
+    console.log("[Atendimento] PUBLIC URL:", publicUrl);
+
+    // Step 3: Send webhook only AFTER upload is 100% confirmed
+    try {
+      const response = await fetch(N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "audio",
+          numero: selectedChat,
+          audioUrl: publicUrl,
+          options: { ptt: true },
+        }),
+      });
+      if (!response.ok) throw new Error(`Webhook HTTP ${response.status}`);
+      console.log("[Atendimento] WEBHOOK SUCCESS");
+      toast({ title: "Áudio enviado!" });
+    } catch (webhookErr) {
+      console.error("[Atendimento] WEBHOOK FAILED:", webhookErr);
+      toast({ title: "Erro ao enviar áudio", variant: "destructive" });
     }
   };
 
