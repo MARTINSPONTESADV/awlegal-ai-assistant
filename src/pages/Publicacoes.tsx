@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CalendarIcon, Search, X, EyeOff } from "lucide-react";
+import { CalendarIcon, Search, X, EyeOff, ClipboardList, Paperclip, Loader2, ImageIcon } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -30,7 +31,13 @@ export default function Publicacoes() {
   const [activeFilters, setActiveFilters] = useState<Record<string, unknown>>({});
   const [selectedPub, setSelectedPub] = useState<any | null>(null);
 
-  // Realtime subscription for publicacoes
+  // Occurrence log state
+  const [showOcorrencia, setShowOcorrencia] = useState(false);
+  const [logText, setLogText] = useState("");
+  const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string }[]>([]);
+  const [savingOcorrencia, setSavingOcorrencia] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const channel = supabase
       .channel('publicacoes_realtime')
@@ -73,6 +80,91 @@ export default function Publicacoes() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["publicacoes"] }); toast.success("Status atualizado"); },
   });
 
+  const handleOpenOcorrencia = () => {
+    setShowOcorrencia(true);
+    setLogText("");
+    setAttachedImages([]);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newImages = Array.from(files).map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    setAttachedImages((prev) => [...prev, ...newImages]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeImage = (index: number) => {
+    setAttachedImages((prev) => {
+      URL.revokeObjectURL(prev[index].preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const handleSaveOcorrencia = async () => {
+    if (!logText.trim() && attachedImages.length === 0) {
+      toast.error("Escreva um log ou anexe uma imagem.");
+      return;
+    }
+    setSavingOcorrencia(true);
+    try {
+      // Find processo_id by numero_processo
+      let processoId: string | null = null;
+      if (selectedPub?.numero_processo) {
+        const { data: proc } = await supabase
+          .from("processos")
+          .select("id")
+          .eq("numero_processo", selectedPub.numero_processo)
+          .maybeSingle();
+        processoId = proc?.id || null;
+      }
+
+      // Upload images
+      const uploadedUrls: string[] = [];
+      for (const img of attachedImages) {
+        const ext = img.file.name.split(".").pop() || "jpg";
+        const filename = `${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("anexos_agenda")
+          .upload(filename, img.file, { contentType: img.file.type, upsert: false });
+        if (upErr) {
+          console.error("Upload error:", upErr);
+          toast.error(`Erro ao enviar imagem: ${img.file.name}`);
+          continue;
+        }
+        const { data: urlData } = supabase.storage.from("anexos_agenda").getPublicUrl(filename);
+        uploadedUrls.push(urlData.publicUrl);
+      }
+
+      const anexosLog = uploadedUrls.length > 0 ? uploadedUrls : null;
+
+      const { error } = await supabase.from("agenda").insert({
+        titulo: `Ocorrência: ${selectedPub?.numero_processo || "Publicação"}`,
+        tipo: "Outros",
+        data_prazo: new Date().toISOString().split("T")[0],
+        processo_id: processoId,
+        logs_interacao: logText.trim() || null,
+        anexos_log: anexosLog,
+        descricao: `Registrado a partir da publicação de ${selectedPub?.data_publicacao || "—"}`,
+      });
+
+      if (error) throw error;
+
+      toast.success("Ocorrência registrada na Agenda!");
+      setShowOcorrencia(false);
+      setLogText("");
+      setAttachedImages([]);
+    } catch (err: any) {
+      console.error("Erro ao salvar ocorrência:", err);
+      toast.error("Erro ao salvar ocorrência.");
+    } finally {
+      setSavingOcorrencia(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Breadcrumbs items={[{ label: "Publicações" }]} />
@@ -93,7 +185,7 @@ export default function Publicacoes() {
           <Card><CardHeader><CardTitle className="text-lg">Listagem de publicações ({publicacoes.length})</CardTitle></CardHeader><CardContent>
             {isLoading ? (<p className="text-muted-foreground text-sm py-8 text-center">Carregando...</p>) : publicacoes.length === 0 ? (<p className="text-muted-foreground text-sm py-8 text-center">Não existem publicações no período especificado.</p>) : (
               <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Órgão</TableHead><TableHead>Nº Processo</TableHead><TableHead>Cliente</TableHead><TableHead>Conteúdo</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-              <TableBody>{publicacoes.map((pub: any) => (<TableRow key={pub.id} className={cn("cursor-pointer", pub.status_leitura !== "Lida" && "bg-accent/50")} onClick={() => setSelectedPub(pub)}>
+              <TableBody>{publicacoes.map((pub: any) => (<TableRow key={pub.id} className={cn("cursor-pointer", pub.status_leitura !== "Lida" && "bg-accent/50")} onClick={() => { setSelectedPub(pub); setShowOcorrencia(false); }}>
                 <TableCell className="whitespace-nowrap">{pub.data_publicacao || "—"}</TableCell>
                 <TableCell>{pub.orgao || "—"}</TableCell>
                 <TableCell className="whitespace-nowrap">{pub.numero_processo || "—"}</TableCell>
@@ -105,20 +197,86 @@ export default function Publicacoes() {
           </CardContent></Card>
         </TabsContent>
       </Tabs>
-      <Dialog open={!!selectedPub} onOpenChange={(open) => !open && setSelectedPub(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto"><DialogHeader><DialogTitle>Detalhes da Publicação</DialogTitle></DialogHeader>
-          {selectedPub && (<div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Data</p><p className="font-medium text-sm">{selectedPub.data_publicacao || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Órgão</p><p className="font-medium text-sm">{selectedPub.orgao || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tipo</p><p className="font-medium text-sm">{selectedPub.tipo_publicacao || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tribunal</p><p className="font-medium text-sm">{selectedPub.tribunal || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Processo</p><p className="font-medium text-sm">{selectedPub.numero_processo || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Cliente</p><p className="font-medium text-sm">{selectedPub.cliente_id || "—"}</p></div>
-              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Status</p><Badge variant={selectedPub.status_leitura === "Lida" ? "secondary" : "destructive"} className="cursor-pointer" onClick={() => { toggleLida.mutate({ id: selectedPub.id, current: selectedPub.status_leitura || "" }); setSelectedPub((prev: any) => prev ? { ...prev, status_leitura: prev.status_leitura === "Lida" ? "Não lida" : "Lida" } : null); }}>{selectedPub.status_leitura || "Não lida"}</Badge></div>
+
+      {/* Detail + Occurrence Modal */}
+      <Dialog open={!!selectedPub} onOpenChange={(open) => { if (!open) { setSelectedPub(null); setShowOcorrencia(false); } }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between gap-2">
+              <DialogTitle>Detalhes da Publicação</DialogTitle>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={handleOpenOcorrencia}>
+                <ClipboardList className="h-4 w-4" />Registrar Ocorrência
+              </Button>
             </div>
-            <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Conteúdo</p><div className="rounded-lg border border-border bg-muted/50 p-4 text-sm whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto">{selectedPub.conteudo || "—"}</div></div>
-          </div>)}
+          </DialogHeader>
+          {selectedPub && !showOcorrencia && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Data</p><p className="font-medium text-sm">{selectedPub.data_publicacao || "—"}</p></div>
+                <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Órgão</p><p className="font-medium text-sm">{selectedPub.orgao || "—"}</p></div>
+                <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tipo</p><p className="font-medium text-sm">{selectedPub.tipo_publicacao || "—"}</p></div>
+                <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tribunal</p><p className="font-medium text-sm">{selectedPub.tribunal || "—"}</p></div>
+                <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Processo</p><p className="font-medium text-sm">{selectedPub.numero_processo || "—"}</p></div>
+                <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Cliente</p><p className="font-medium text-sm">{selectedPub.cliente_id || "—"}</p></div>
+                <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Status</p><Badge variant={selectedPub.status_leitura === "Lida" ? "secondary" : "destructive"} className="cursor-pointer" onClick={() => { toggleLida.mutate({ id: selectedPub.id, current: selectedPub.status_leitura || "" }); setSelectedPub((prev: any) => prev ? { ...prev, status_leitura: prev.status_leitura === "Lida" ? "Não lida" : "Lida" } : null); }}>{selectedPub.status_leitura || "Não lida"}</Badge></div>
+              </div>
+              {/* Matéria */}
+              {selectedPub.materia && (
+                <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Matéria</p><div className="rounded-lg border border-border bg-muted/50 p-4 text-sm whitespace-pre-wrap leading-relaxed max-h-[20vh] overflow-y-auto">{selectedPub.materia}</div></div>
+              )}
+              {/* Resumo (descricao) */}
+              {selectedPub.descricao && (
+                <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Resumo</p><div className="rounded-lg border border-border bg-muted/50 p-4 text-sm whitespace-pre-wrap leading-relaxed max-h-[20vh] overflow-y-auto">{selectedPub.descricao}</div></div>
+              )}
+              {/* Conteúdo */}
+              <div><p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Conteúdo</p><div className="rounded-lg border border-border bg-muted/50 p-4 text-sm whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto">{selectedPub.conteudo || "—"}</div></div>
+            </div>
+          )}
+
+          {/* Occurrence Log Form */}
+          {selectedPub && showOcorrencia && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Registrando ocorrência para o processo <strong>{selectedPub.numero_processo || "—"}</strong>
+              </p>
+              <div className="space-y-2">
+                <Label>Log da Ocorrência</Label>
+                <Textarea
+                  placeholder="Descreva a ocorrência..."
+                  value={logText}
+                  onChange={(e) => setLogText(e.target.value)}
+                  rows={5}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Anexos (imagens)</Label>
+                <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileSelect} />
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
+                  <Paperclip className="h-4 w-4" />Anexar Imagem
+                </Button>
+                {attachedImages.length > 0 && (
+                  <div className="flex flex-wrap gap-3 mt-2">
+                    {attachedImages.map((img, idx) => (
+                      <div key={idx} className="relative group">
+                        <img src={img.preview} alt={`Anexo ${idx + 1}`} className="h-20 w-20 object-cover rounded-lg border border-border" />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(idx)}
+                          className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full h-5 w-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={() => setShowOcorrencia(false)}>Voltar</Button>
+                <Button size="sm" onClick={handleSaveOcorrencia} disabled={savingOcorrencia}>
+                  {savingOcorrencia ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Salvando...</> : "Salvar Ocorrência"}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
