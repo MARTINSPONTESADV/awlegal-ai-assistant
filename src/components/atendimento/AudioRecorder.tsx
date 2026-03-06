@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Send, X } from "lucide-react";
 import fixWebmDuration from "fix-webm-duration";
@@ -12,51 +12,27 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const [isRecording, setIsRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [sending, setSending] = useState(false);
-
-  // Refs that survive across renders but are NOT used to accumulate chunks
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number>(0);
-
-  // This ref holds the LOCAL chunks array for the CURRENT recording session.
-  // It is reassigned to a brand-new array on every startRecording call,
-  // and the onstop closure captures it by reference so there is zero
-  // chance of stale-state corruption.
-  const sessionChunksRef = useRef<Blob[]>([]);
-  const sessionStartRef = useRef<number>(0);
+  const startTimeRef = useRef<number>(0);
 
   useEffect(() => {
-    return () => { releaseHardware(); };
-  }, []);
-
-  /** Release mic, timers, animation — but does NOT touch sessionChunksRef */
-  const releaseHardware = useCallback(() => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    mediaRecorderRef.current = null;
-    analyserRef.current = null;
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    };
   }, []);
 
   const startRecording = async () => {
-    // 1. Hard-stop any previous recorder that may still be alive
-    try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
-    releaseHardware();
-
-    // 2. Create a BRAND-NEW local chunks array for THIS session.
-    //    The onstop closure below captures `localChunks` by reference,
-    //    so it is completely isolated from future recordings.
-    const localChunks: Blob[] = [];
-    sessionChunksRef.current = localChunks;
-
-    // 3. Reset UI
-    setIsRecording(false);
+    // Only reset the chunks array — do NOT touch stream/recorder refs
+    // (the previous session's onstop handles its own cleanup after processing)
+    chunksRef.current = [];
     setSending(false);
     setElapsed(0);
 
@@ -72,7 +48,6 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       });
       streamRef.current = stream;
 
-      // Analyser for waveform visualisation
       const audioCtx = new AudioContext();
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
@@ -80,34 +55,30 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      // Prefer OGG Opus; fall back to browser default (WebM in Chrome)
       const mimeType = "audio/ogg; codecs=opus";
       const recorder = MediaRecorder.isTypeSupported(mimeType)
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
 
-      console.log("[AudioRecorder] New session — mimeType:", recorder.mimeType);
-
-      // ── ondataavailable: push into LOCAL array, not React state ──
+      console.log("[AudioRecorder] mimeType:", recorder.mimeType);
+      chunksRef.current = [];
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          localChunks.push(e.data);
-        }
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-
       recorder.start(250);
       mediaRecorderRef.current = recorder;
 
-      const startTime = Date.now();
-      sessionStartRef.current = startTime;
-
       setIsRecording(true);
-      setElapsed(0);
+      startTimeRef.current = Date.now();
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
       drawWaveform();
     } catch (err: unknown) {
       console.error("[AudioRecorder] Erro getUserMedia:", err);
-      releaseHardware();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      mediaRecorderRef.current = null;
       setIsRecording(false);
       setSending(false);
       setElapsed(0);
@@ -139,9 +110,16 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   };
 
   const cancelRecording = () => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
-    releaseHardware();
-    sessionChunksRef.current = [];
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+    analyserRef.current = null;
+    chunksRef.current = [];
     setIsRecording(false);
     setSending(false);
     setElapsed(0);
@@ -150,48 +128,31 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const sendRecording = () => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === "inactive") {
-      releaseHardware();
-      sessionChunksRef.current = [];
       setIsRecording(false);
       setSending(false);
       setElapsed(0);
       return;
     }
 
-    // Capture the session's local chunks reference BEFORE stopping
-    const chunksForThisSession = sessionChunksRef.current;
-    const duration = Date.now() - sessionStartRef.current;
-    const recorderMime = recorder.mimeType;
-
-    // Stop UI immediately
+    // Stop UI timers immediately
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     setIsRecording(false);
     setElapsed(0);
 
-    // ── onstop: reads from the captured LOCAL chunks array ──
     recorder.onstop = async () => {
-      console.log("[AudioRecorder] onstop — chunks:", chunksForThisSession.length, "duration:", duration, "ms");
-
-      // Release hardware immediately
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-      mediaRecorderRef.current = null;
-      analyserRef.current = null;
-
-      if (chunksForThisSession.length === 0) {
-        console.error("[AudioRecorder] Nenhum chunk gravado. Upload abortado.");
-        setSending(false);
-        return;
-      }
-
-      const rawBlob = new Blob(chunksForThisSession, { type: recorderMime || "audio/webm" });
-      console.log("[AudioRecorder] Raw blob:", rawBlob.size, "bytes, type:", rawBlob.type);
+      const chunks = [...chunksRef.current];
+      const duration = Date.now() - startTimeRef.current;
+      const rawBlob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      console.log("[AudioRecorder] Raw blob:", rawBlob.size, "bytes, duration:", duration, "ms, mimeType:", rawBlob.type);
 
       if (rawBlob.size === 0) {
         console.error("[AudioRecorder] Blob vazio. Upload abortado.");
+        // Cleanup only AFTER we confirmed blob is empty
+        if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
+        mediaRecorderRef.current = null;
+        analyserRef.current = null;
+        chunksRef.current = [];
         setSending(false);
         return;
       }
@@ -204,6 +165,14 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       } catch (err) {
         console.error("[AudioRecorder] Erro no upload:", err);
       } finally {
+        // === CLEANUP ONLY AFTER fix-webm-duration + upload are 100% done ===
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+        }
+        mediaRecorderRef.current = null;
+        analyserRef.current = null;
+        chunksRef.current = [];
         setSending(false);
       }
     };
@@ -212,7 +181,10 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       recorder.stop();
     } catch (e) {
       console.error("[AudioRecorder] Erro ao parar:", e);
-      releaseHardware();
+      if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
+      mediaRecorderRef.current = null;
+      analyserRef.current = null;
+      chunksRef.current = [];
       setSending(false);
     }
   };
