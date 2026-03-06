@@ -1,0 +1,1 @@
+ALTER TABLE public.controle_bot ADD COLUMN nome_contato text DEFAULT NULL;
