@@ -126,6 +126,29 @@ export default function Atendimento() {
 
   const currentChat = chats.find((c) => c.whatsapp_numero === selectedChat);
 
+  // Sync contactName when selected chat changes
+  useEffect(() => {
+    if (currentChat) {
+      setContactName(currentChat.nome_contato || "");
+      setEditingName(false);
+    }
+  }, [selectedChat]);
+
+  const saveContactName = async () => {
+    if (!selectedChat) return;
+    const trimmed = contactName.trim();
+    await supabase
+      .from("controle_bot")
+      .update({ nome_contato: trimmed || null } as any)
+      .eq("whatsapp_numero", selectedChat);
+    setChats((prev) =>
+      prev.map((c) =>
+        c.whatsapp_numero === selectedChat ? { ...c, nome_contato: trimmed || null } : c
+      )
+    );
+    setEditingName(false);
+    toast({ title: trimmed ? `Contato renomeado para "${trimmed}"` : "Nome removido" });
+  };
   const toggleBot = async () => {
     if (!currentChat) return;
     setLoadingBot(true);
