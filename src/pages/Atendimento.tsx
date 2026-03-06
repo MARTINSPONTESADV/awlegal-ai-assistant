@@ -57,6 +57,8 @@ export default function Atendimento() {
   const [sending, setSending] = useState(false);
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [rightSheetOpen, setRightSheetOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [contactName, setContactName] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load chats from controle_bot
