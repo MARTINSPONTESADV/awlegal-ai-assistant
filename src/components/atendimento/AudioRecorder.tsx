@@ -112,13 +112,10 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+    // Only stop mic tracks — let GC handle the rest
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
     }
-    mediaRecorderRef.current = null;
-    analyserRef.current = null;
-    chunksRef.current = [];
     setIsRecording(false);
     setSending(false);
     setElapsed(0);
