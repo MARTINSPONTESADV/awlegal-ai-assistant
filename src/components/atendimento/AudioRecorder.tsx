@@ -47,7 +47,15 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     setSending(false);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
       streamRef.current = stream;
 
       const audioCtx = new AudioContext();
@@ -57,14 +65,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      // Pick best supported mimeType, always prefer OGG
-      const mimeType = MediaRecorder.isTypeSupported("audio/ogg; codecs=opus")
-        ? "audio/ogg; codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm; codecs=opus")
-          ? "audio/webm; codecs=opus"
-          : "";
-
-      const recorder = mimeType
+      // Force OGG Opus for WhatsApp PTT compatibility
+      const mimeType = "audio/ogg; codecs=opus";
+      const recorder = MediaRecorder.isTypeSupported(mimeType)
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
 
