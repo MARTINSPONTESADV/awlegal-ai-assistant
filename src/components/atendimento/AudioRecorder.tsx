@@ -30,6 +30,16 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   }, []);
 
   const startRecording = async () => {
+    // === STEP 0: Kill any leftover previous session ===
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+
     setSending(false);
     setElapsed(0);
 
@@ -57,25 +67,31 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
 
-      console.log("[AudioRecorder] mimeType:", recorder.mimeType);
+      console.log("[AudioRecorder] NEW session. mimeType:", recorder.mimeType);
 
-      // ===== CLOSURE-SCOPED DATA — isolated per recording session =====
-      const localChunks: Blob[] = [];
-      const localStartTime = Date.now();
-      const localStream = stream; // captured for cleanup after upload
+      // ===== CLOSURE-SCOPED DATA — fully isolated per session =====
+      const sessionChunks: Blob[] = [];
+      const sessionStartTime = Date.now();
+      const sessionStream = stream;
+      const sessionId = Math.random().toString(36).slice(2, 8); // debug tag
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) localChunks.push(e.data);
+        if (e.data.size > 0) {
+          sessionChunks.push(e.data);
+          console.log(`[AudioRecorder][${sessionId}] chunk #${sessionChunks.length}, size: ${e.data.size}`);
+        }
       };
 
       recorder.onstop = async () => {
-        const rawBlob = new Blob(localChunks, { type: recorder.mimeType || "audio/webm" });
-        const duration = Date.now() - localStartTime;
-        console.log("[AudioRecorder] Raw blob:", rawBlob.size, "bytes, duration:", duration, "ms, mimeType:", rawBlob.type);
+        // Snapshot the chunks array immediately — no external refs
+        const finalChunks = [...sessionChunks];
+        const rawBlob = new Blob(finalChunks, { type: recorder.mimeType || "audio/webm" });
+        const duration = Date.now() - sessionStartTime;
+        console.log(`[AudioRecorder][${sessionId}] onstop — chunks: ${finalChunks.length}, blob: ${rawBlob.size} bytes, duration: ${duration}ms`);
 
         if (rawBlob.size === 0) {
-          console.error("[AudioRecorder] Blob vazio. Upload abortado.");
-          localStream.getTracks().forEach((t) => t.stop());
+          console.error(`[AudioRecorder][${sessionId}] Blob vazio. Upload abortado.`);
+          sessionStream.getTracks().forEach((t) => t.stop());
           setSending(false);
           return;
         }
@@ -83,13 +99,12 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
         setSending(true);
         try {
           const fixedBlob = await fixWebmDuration(rawBlob, duration, { logger: false });
-          console.log("[AudioRecorder] Fixed blob:", fixedBlob.size, "bytes, type:", fixedBlob.type);
+          console.log(`[AudioRecorder][${sessionId}] Fixed blob: ${fixedBlob.size} bytes`);
           await onSend(fixedBlob, ".webm");
         } catch (err) {
-          console.error("[AudioRecorder] Erro no upload:", err);
+          console.error(`[AudioRecorder][${sessionId}] Erro no upload:`, err);
         } finally {
-          // Stop mic ONLY after upload is 100% done
-          localStream.getTracks().forEach((t) => t.stop());
+          sessionStream.getTracks().forEach((t) => t.stop());
           setSending(false);
         }
       };
