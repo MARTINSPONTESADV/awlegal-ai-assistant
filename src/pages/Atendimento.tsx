@@ -68,7 +68,7 @@ export default function Atendimento() {
           data.map(async (c) => {
             const { data: msgs } = await supabase
               .from("historico_mensagens")
-              .select("conteudo, created_at")
+              .select("conteudo, created_at, tipo_midia")
               .eq("whatsapp_id", c.whatsapp_numero)
               .order("created_at", { ascending: false })
               .limit(1);
@@ -76,7 +76,9 @@ export default function Atendimento() {
               whatsapp_numero: c.whatsapp_numero,
               bot_ativo: c.bot_ativo,
               last_intercept: c.last_intercept,
+              nome_contato: c.nome_contato || null,
               lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
+              lastMessageType: msgs?.[0]?.tipo_midia || "texto",
               lastTime: msgs?.[0]?.created_at || undefined,
             };
           })
