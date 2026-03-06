@@ -341,7 +341,36 @@ export default function Atendimento() {
         <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-2">
           <Phone className="h-6 w-6 text-primary" />
         </div>
-        <p className="font-medium text-sm">{formatPhone(selectedChat || "")}</p>
+        {editingName ? (
+          <div className="flex items-center gap-1 justify-center mt-1">
+            <Input
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              placeholder="Nome do contato"
+              className="h-8 text-sm text-center max-w-[180px]"
+              onKeyDown={(e) => e.key === "Enter" && saveContactName()}
+              autoFocus
+            />
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={saveContactName}>
+              <Check className="h-3.5 w-3.5 text-primary" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingName(false); setContactName(currentChat.nome_contato || ""); }}>
+              <X className="h-3.5 w-3.5 text-destructive" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-1 mt-1">
+            <p className="font-medium text-sm">
+              {currentChat.nome_contato || formatPhone(selectedChat || "")}
+            </p>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingName(true)}>
+              <Pencil className="h-3 w-3 text-muted-foreground" />
+            </Button>
+          </div>
+        )}
+        {currentChat.nome_contato && (
+          <p className="text-xs text-muted-foreground">{formatPhone(selectedChat || "")}</p>
+        )}
         <Badge
           variant="outline"
           className={cn(
