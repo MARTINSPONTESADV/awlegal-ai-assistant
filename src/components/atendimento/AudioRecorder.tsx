@@ -20,24 +20,21 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const animFrameRef = useRef<number>(0);
 
   useEffect(() => {
-    return () => { forceCleanup(); };
+    return () => { cleanup(); };
   }, []);
 
-  // Nuclear cleanup — resets EVERYTHING unconditionally
-  const forceCleanup = useCallback(() => {
-    console.log("[AudioRecorder] forceCleanup chamado");
+  // Simple cleanup — stops timers/animation and releases stream
+  const cleanup = () => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch {} });
-      }
-    } catch {}
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
     mediaRecorderRef.current = null;
-    streamRef.current = null;
     analyserRef.current = null;
     chunksRef.current = [];
-  }, []);
+  };
 
   const startRecording = async () => {
     // Always force cleanup before starting a new recording
