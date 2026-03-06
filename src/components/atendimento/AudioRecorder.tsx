@@ -61,8 +61,11 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       setElapsed(0);
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
       drawWaveform();
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("Erro ao iniciar gravação:", err);
+      stopEverything();
+      setIsRecording(false);
+      setElapsed(0);
     }
   };
 
