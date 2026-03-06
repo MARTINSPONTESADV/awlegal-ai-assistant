@@ -156,17 +156,17 @@ export default function Atendimento() {
   };
 
   // Audio upload handler — ONLY audio, called exclusively by AudioRecorder
-  const handleAudioSend = async (blob: Blob, _extension: string = ".ogg") => {
+  const handleAudioSend = async (blob: Blob, extension: string = ".webm") => {
     if (!selectedChat) return;
     console.log("[Atendimento] Enviando ÁUDIO — tipo: audio, numero:", selectedChat, "blob size:", blob.size, "type:", blob.type);
 
-    // Upload directly to Supabase Storage (no conversion)
-    const finalBlob = new Blob([blob], { type: "audio/ogg; codecs=opus" });
-
-    const filename = `${selectedChat}/${Date.now()}.ogg`;
+    // Upload with real content type (WebM with duration fixed by fix-webm-duration)
+    const contentType = blob.type || "audio/webm";
+    const ext = extension.startsWith(".") ? extension : `.${extension}`;
+    const filename = `${selectedChat}/${Date.now()}${ext}`;
     const { error } = await supabase.storage
       .from("mensagens_audio")
-      .upload(filename, finalBlob, { contentType: "audio/ogg; codecs=opus" });
+      .upload(filename, blob, { contentType });
     if (!error) {
       const { data: urlData } = supabase.storage.from("mensagens_audio").getPublicUrl(filename);
       try {
