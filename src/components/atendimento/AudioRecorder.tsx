@@ -27,12 +27,13 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   }, []);
 
   const stopEverything = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     mediaRecorderRef.current = null;
     streamRef.current = null;
     analyserRef.current = null;
+    chunksRef.current = [];
   };
 
   const startRecording = async () => {
@@ -108,31 +109,35 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   };
 
   const sendRecording = () => {
-    if (!mediaRecorderRef.current) return;
     const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") {
+      stopEverything();
+      setIsRecording(false);
+      setElapsed(0);
+      return;
+    }
+
     recorder.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: "audio/ogg; codecs=opus" });
-      const extension = ".ogg";
+      chunksRef.current = [];
       setSending(true);
       try {
-        await onSend(blob, extension);
+        await onSend(blob, ".ogg");
       } catch (err) {
         console.error("Erro ao enviar áudio:", err);
       } finally {
         setSending(false);
       }
     };
+
     try {
       recorder.stop();
     } catch (e) {
       console.error("Erro ao parar gravação:", e);
     }
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    mediaRecorderRef.current = null;
-    streamRef.current = null;
-    analyserRef.current = null;
+
+    // Force release all tracks immediately
+    stopEverything();
     setIsRecording(false);
     setElapsed(0);
   };
