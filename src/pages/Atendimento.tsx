@@ -289,7 +289,9 @@ export default function Atendimento() {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground truncate mt-0.5">{chat.lastMessage}</p>
+              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                {chat.lastMessageType === "audio" ? "🎵 Áudio" : chat.lastMessage}
+              </p>
               <div className="flex items-center gap-1 mt-1">
                 {chat.bot_ativo ? (
                   <Bot className="h-3 w-3 text-primary" />
