@@ -38,13 +38,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
 
   // Called directly from onClick — user gesture preserved
   const startRecording = async () => {
-    // Reset stale hardware before requesting new mic access
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    mediaRecorderRef.current = null;
-    chunksRef.current = [];
+    // FULL cleanup of previous recording state before starting a new one
+    cleanup();
+    setElapsed(0);
     setSending(false);
 
     try {
