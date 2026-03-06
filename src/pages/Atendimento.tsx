@@ -465,7 +465,7 @@ export default function Atendimento() {
                   <Phone className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{formatPhone(selectedChat)}</p>
+                  <p className="text-sm font-medium">{currentChat?.nome_contato || formatPhone(selectedChat)}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {currentChat?.bot_ativo ? "🤖 Bot ativo" : "👤 Humano atendendo"}
                   </p>
