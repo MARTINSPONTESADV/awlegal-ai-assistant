@@ -4,7 +4,8 @@ import { SpotlightCard } from "@/components/SpotlightCard";
 import { DonutChart } from "@/components/DonutChart";
 import { Users, Briefcase, CalendarDays, DollarSign, Activity } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { fmtBRL, isProcessoEncerrado } from "@/lib/financeiro";
+import { fmtBRL } from "@/lib/financeiro";
+import { useTotalCausa } from "@/hooks/useTotalCausa";
 
 interface Stats {
   clientes: number;
@@ -19,7 +20,7 @@ export default function Dashboard() {
   const [conversaoData, setConversaoData] = useState<{ name: string; value: number }[]>([]);
   const [tipoProcessoData, setTipoProcessoData] = useState<{ name: string; value: number }[]>([]);
   const [instanciaData, setInstanciaData] = useState<{ name: string; value: number }[]>([]);
-  const [valorCausaTotal, setValorCausaTotal] = useState(0);
+  const { causaAtivo: valorCausaTotal } = useTotalCausa();
   const [proximosPrazos, setProximosPrazos] = useState<any[]>([]);
   const navigate = useNavigate();
 
@@ -29,25 +30,30 @@ export default function Dashboard() {
       const weekFromNow = new Date(now.getTime() + 7 * 86400000).toISOString().split("T")[0];
       const today = now.toISOString().split("T")[0];
 
-      const [cRes, pRes, aRes] = await Promise.all([
+      // Count Ativos + Suspensos together
+      const [cRes, pAtivosRes, pSuspensosRes, aRes] = await Promise.all([
         supabase.from("clientes").select("id", { count: "exact", head: true }),
         supabase.from("processos").select("id", { count: "exact", head: true }).eq("situacao", "Ativo"),
+        supabase.from("processos").select("id", { count: "exact", head: true }).eq("situacao", "Suspenso"),
         supabase.from("agenda").select("id", { count: "exact", head: true }).eq("status", "pendente").gte("data_prazo", today).lte("data_prazo", weekFromNow),
       ]);
 
-      setStats({ clientes: cRes.count ?? 0, processosAtivos: pRes.count ?? 0, prazosSemana: aRes.count ?? 0 });
+      setStats({
+        clientes: cRes.count ?? 0,
+        processosAtivos: (pAtivosRes.count ?? 0) + (pSuspensosRes.count ?? 0),
+        prazosSemana: aRes.count ?? 0,
+      });
 
-      const { data: allProc } = await supabase.from("processos").select("prognostico, tipo_processo, valor_causa, situacao, localizador, status_pagamento_honorarios");
+      const { data: allProc } = await supabase.from("processos").select("prognostico, tipo_processo, situacao, localizador, status_pagamento_honorarios");
       if (allProc) {
         const progCounts: Record<string, number> = {};
         const tipoCounts: Record<string, number> = {};
         const instanciaCounts: Record<string, number> = {};
-        let somaValorCausa = 0;
         allProc.forEach((p: any) => {
           if (p.prognostico) progCounts[p.prognostico] = (progCounts[p.prognostico] || 0) + 1;
           if (p.tipo_processo) tipoCounts[p.tipo_processo] = (tipoCounts[p.tipo_processo] || 0) + 1;
-          if (!isProcessoEncerrado(p) && p.valor_causa) somaValorCausa += Number(p.valor_causa);
-          if (!isProcessoEncerrado(p)) {
+          const sit = (p.situacao || "").toLowerCase();
+          if (sit === "ativo" || sit === "suspenso" || !sit) {
             const inst = p.localizador || "Não informado";
             instanciaCounts[inst] = (instanciaCounts[inst] || 0) + 1;
           }
@@ -55,7 +61,6 @@ export default function Dashboard() {
         setPrognosticoData(Object.entries(progCounts).map(([name, value]) => ({ name, value })));
         setTipoProcessoData(Object.entries(tipoCounts).map(([name, value]) => ({ name, value })));
         setInstanciaData(Object.entries(instanciaCounts).map(([name, value]) => ({ name, value })));
-        setValorCausaTotal(somaValorCausa);
       }
 
       const { data: allFases } = await supabase.from("processos").select("fase_id, aux_fases(nome)").not("fase_id", "is", null);
