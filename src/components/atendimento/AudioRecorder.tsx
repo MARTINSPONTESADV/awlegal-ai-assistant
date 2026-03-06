@@ -30,6 +30,16 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   }, []);
 
   const startRecording = async () => {
+    // === STEP 0: Kill any leftover previous session ===
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+
     setSending(false);
     setElapsed(0);
 
@@ -57,12 +67,13 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
 
-      console.log("[AudioRecorder] mimeType:", recorder.mimeType);
+      console.log("[AudioRecorder] NEW session. mimeType:", recorder.mimeType);
 
-      // ===== CLOSURE-SCOPED DATA — isolated per recording session =====
-      const localChunks: Blob[] = [];
-      const localStartTime = Date.now();
-      const localStream = stream; // captured for cleanup after upload
+      // ===== CLOSURE-SCOPED DATA — fully isolated per session =====
+      const sessionChunks: Blob[] = [];
+      const sessionStartTime = Date.now();
+      const sessionStream = stream;
+      const sessionId = Math.random().toString(36).slice(2, 8); // debug tag
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) localChunks.push(e.data);
