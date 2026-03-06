@@ -62,9 +62,10 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      const mimeType = "audio/ogg; codecs=opus";
-      const recorder = MediaRecorder.isTypeSupported(mimeType)
-        ? new MediaRecorder(stream, { mimeType })
+      // MUST use webm — fix-webm-duration only works with WebM containers
+      const webmMime = "audio/webm;codecs=opus";
+      const recorder = MediaRecorder.isTypeSupported(webmMime)
+        ? new MediaRecorder(stream, { mimeType: webmMime })
         : new MediaRecorder(stream);
 
       console.log("[AudioRecorder] NEW session. mimeType:", recorder.mimeType);
