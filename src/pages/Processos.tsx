@@ -43,7 +43,7 @@ export default function Processos() {
 
   const fetchAll = useCallback(async () => {
     const { data } = await supabase.from("processos")
-      .select("id, cliente_id, numero_processo, numero_cnj, partes_requeridas, status, situacao, valor_acordo, valor_execucao, valor_sentenca, status_pagamento_honorarios, prognostico, tipo_processo, fase_id, aux_fases(nome), clientes(nome_completo)")
+      .select("id, cliente_id, numero_processo, numero_cnj, partes_requeridas, status, situacao, valor_acordo, valor_execucao, valor_sentenca, status_pagamento_honorarios, prognostico, tipo_processo, fase_id, capturar_andamentos, aux_fases(nome), clientes(nome_completo)")
       .order("created_at", { ascending: false });
     if (data) setProcessos(data as any);
   }, []);
