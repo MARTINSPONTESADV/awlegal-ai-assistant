@@ -55,7 +55,8 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-      recorder.start();
+      // Use timeslice to accumulate chunks progressively during recording
+      recorder.start(250);
       mediaRecorderRef.current = recorder;
 
       setIsRecording(true);
