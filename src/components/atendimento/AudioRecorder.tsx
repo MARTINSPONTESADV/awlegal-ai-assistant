@@ -30,9 +30,8 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   }, []);
 
   const startRecording = async () => {
-    // Only reset the chunks array — do NOT touch stream/recorder refs
-    // (the previous session's onstop handles its own cleanup after processing)
-    chunksRef.current = [];
+    // Do NOT cleanup old refs — just overwrite them with new instances.
+    // The previous onstop handler holds its own captured references.
     setSending(false);
     setElapsed(0);
 
