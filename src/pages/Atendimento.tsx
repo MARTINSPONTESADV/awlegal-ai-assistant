@@ -281,7 +281,7 @@ export default function Atendimento() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground truncate">
-                  {formatPhone(chat.whatsapp_numero)}
+                  {chat.nome_contato || formatPhone(chat.whatsapp_numero)}
                 </span>
                 {chat.lastTime && (
                   <span className="text-[10px] text-muted-foreground">
