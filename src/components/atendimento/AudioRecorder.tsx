@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Send, X } from "lucide-react";
 import fixWebmDuration from "fix-webm-duration";
@@ -12,19 +12,28 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const [isRecording, setIsRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [sending, setSending] = useState(false);
+
+  // Refs that survive across renders but are NOT used to accumulate chunks
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number>(0);
-  const startTimeRef = useRef<number>(0);
+
+  // This ref holds the LOCAL chunks array for the CURRENT recording session.
+  // It is reassigned to a brand-new array on every startRecording call,
+  // and the onstop closure captures it by reference so there is zero
+  // chance of stale-state corruption.
+  const sessionChunksRef = useRef<Blob[]>([]);
+  const sessionStartRef = useRef<number>(0);
+
   useEffect(() => {
-    return () => { cleanup(); };
+    return () => { releaseHardware(); };
   }, []);
 
-  const cleanup = () => {
+  /** Release mic, timers, animation — but does NOT touch sessionChunksRef */
+  const releaseHardware = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     if (streamRef.current) {
@@ -33,15 +42,23 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     }
     mediaRecorderRef.current = null;
     analyserRef.current = null;
-    chunksRef.current = [];
-  };
+  }, []);
 
-  // Called directly from onClick — user gesture preserved
   const startRecording = async () => {
-    // FULL cleanup of previous recording state before starting a new one
-    cleanup();
-    setElapsed(0);
+    // 1. Hard-stop any previous recorder that may still be alive
+    try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+    releaseHardware();
+
+    // 2. Create a BRAND-NEW local chunks array for THIS session.
+    //    The onstop closure below captures `localChunks` by reference,
+    //    so it is completely isolated from future recordings.
+    const localChunks: Blob[] = [];
+    sessionChunksRef.current = localChunks;
+
+    // 3. Reset UI
+    setIsRecording(false);
     setSending(false);
+    setElapsed(0);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -55,6 +72,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       });
       streamRef.current = stream;
 
+      // Analyser for waveform visualisation
       const audioCtx = new AudioContext();
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
@@ -62,33 +80,34 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      // Force OGG Opus for WhatsApp PTT compatibility
+      // Prefer OGG Opus; fall back to browser default (WebM in Chrome)
       const mimeType = "audio/ogg; codecs=opus";
       const recorder = MediaRecorder.isTypeSupported(mimeType)
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
 
-      console.log("[AudioRecorder] mimeType:", recorder.mimeType);
-      chunksRef.current = [];
+      console.log("[AudioRecorder] New session — mimeType:", recorder.mimeType);
+
+      // ── ondataavailable: push into LOCAL array, not React state ──
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (e.data.size > 0) {
+          localChunks.push(e.data);
+        }
       };
+
       recorder.start(250);
       mediaRecorderRef.current = recorder;
 
+      const startTime = Date.now();
+      sessionStartRef.current = startTime;
+
       setIsRecording(true);
       setElapsed(0);
-      startTimeRef.current = Date.now();
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
       drawWaveform();
     } catch (err: unknown) {
       console.error("[AudioRecorder] Erro getUserMedia:", err);
-      // Clean up any partial state
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-      mediaRecorderRef.current = null;
+      releaseHardware();
       setIsRecording(false);
       setSending(false);
       setElapsed(0);
@@ -120,8 +139,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   };
 
   const cancelRecording = () => {
-    try { mediaRecorderRef.current?.stop(); } catch {}
-    cleanup();
+    try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+    releaseHardware();
+    sessionChunksRef.current = [];
     setIsRecording(false);
     setSending(false);
     setElapsed(0);
@@ -130,12 +150,18 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const sendRecording = () => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === "inactive") {
-      cleanup();
+      releaseHardware();
+      sessionChunksRef.current = [];
       setIsRecording(false);
       setSending(false);
       setElapsed(0);
       return;
     }
+
+    // Capture the session's local chunks reference BEFORE stopping
+    const chunksForThisSession = sessionChunksRef.current;
+    const duration = Date.now() - sessionStartRef.current;
+    const recorderMime = recorder.mimeType;
 
     // Stop UI immediately
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -143,11 +169,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     setIsRecording(false);
     setElapsed(0);
 
+    // ── onstop: reads from the captured LOCAL chunks array ──
     recorder.onstop = async () => {
-      const chunks = [...chunksRef.current];
-      const rawBlob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-      const duration = Date.now() - startTimeRef.current;
-      console.log("[AudioRecorder] Raw blob:", rawBlob.size, "bytes, duration:", duration, "ms, mimeType:", rawBlob.type);
+      console.log("[AudioRecorder] onstop — chunks:", chunksForThisSession.length, "duration:", duration, "ms");
 
       // Release hardware immediately
       if (streamRef.current) {
@@ -156,7 +180,15 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       }
       mediaRecorderRef.current = null;
       analyserRef.current = null;
-      chunksRef.current = [];
+
+      if (chunksForThisSession.length === 0) {
+        console.error("[AudioRecorder] Nenhum chunk gravado. Upload abortado.");
+        setSending(false);
+        return;
+      }
+
+      const rawBlob = new Blob(chunksForThisSession, { type: recorderMime || "audio/webm" });
+      console.log("[AudioRecorder] Raw blob:", rawBlob.size, "bytes, type:", rawBlob.type);
 
       if (rawBlob.size === 0) {
         console.error("[AudioRecorder] Blob vazio. Upload abortado.");
@@ -166,7 +198,6 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
 
       setSending(true);
       try {
-        // Fix WebM duration metadata so WhatsApp can read the file length
         const fixedBlob = await fixWebmDuration(rawBlob, duration, { logger: false });
         console.log("[AudioRecorder] Fixed blob:", fixedBlob.size, "bytes, type:", fixedBlob.type);
         await onSend(fixedBlob, ".webm");
@@ -181,7 +212,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       recorder.stop();
     } catch (e) {
       console.error("[AudioRecorder] Erro ao parar:", e);
-      cleanup();
+      releaseHardware();
       setSending(false);
     }
   };
