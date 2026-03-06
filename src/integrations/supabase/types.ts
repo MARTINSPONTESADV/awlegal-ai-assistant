@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       agenda: {
         Row: {
+          anexos_log: Json | null
           cliente_id: string | null
           created_at: string
           created_by: string | null
@@ -24,6 +25,7 @@ export type Database = {
           data_prazo: string
           descricao: string | null
           id: string
+          logs_interacao: string | null
           processo_id: string | null
           responsavel_id: string | null
           status: string
@@ -32,6 +34,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          anexos_log?: Json | null
           cliente_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -40,6 +43,7 @@ export type Database = {
           data_prazo: string
           descricao?: string | null
           id?: string
+          logs_interacao?: string | null
           processo_id?: string | null
           responsavel_id?: string | null
           status?: string
@@ -48,6 +52,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          anexos_log?: Json | null
           cliente_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -56,6 +61,7 @@ export type Database = {
           data_prazo?: string
           descricao?: string | null
           id?: string
+          logs_interacao?: string | null
           processo_id?: string | null
           responsavel_id?: string | null
           status?: string
@@ -762,9 +768,11 @@ export type Database = {
           conteudo: string | null
           created_at: string | null
           data_publicacao: string | null
+          descricao: string | null
           id: string
           instancia: string | null
           lido_em: string | null
+          materia: string | null
           numero_processo: string | null
           orgao: string | null
           status_leitura: string | null
@@ -777,9 +785,11 @@ export type Database = {
           conteudo?: string | null
           created_at?: string | null
           data_publicacao?: string | null
+          descricao?: string | null
           id?: string
           instancia?: string | null
           lido_em?: string | null
+          materia?: string | null
           numero_processo?: string | null
           orgao?: string | null
           status_leitura?: string | null
@@ -792,9 +802,11 @@ export type Database = {
           conteudo?: string | null
           created_at?: string | null
           data_publicacao?: string | null
+          descricao?: string | null
           id?: string
           instancia?: string | null
           lido_em?: string | null
+          materia?: string | null
           numero_processo?: string | null
           orgao?: string | null
           status_leitura?: string | null
