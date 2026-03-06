@@ -130,9 +130,10 @@ export default function Atendimento() {
     setLoadingBot(false);
   };
 
-  // Send text message via n8n webhook
+  // Send text message via n8n webhook — ONLY text, never audio
   const sendMessage = async () => {
     if (!newMsg.trim() || !selectedChat || sending) return;
+    console.log("[Atendimento] Enviando TEXTO — tipo: text, numero:", selectedChat);
     setSending(true);
     try {
       const response = await fetch(N8N_WEBHOOK_URL, {
@@ -154,9 +155,10 @@ export default function Atendimento() {
     }
   };
 
-  // Audio upload handler for AudioRecorder component
+  // Audio upload handler — ONLY audio, called exclusively by AudioRecorder
   const handleAudioSend = async (blob: Blob, _extension: string = ".ogg") => {
     if (!selectedChat) return;
+    console.log("[Atendimento] Enviando ÁUDIO — tipo: audio, numero:", selectedChat, "blob size:", blob.size);
     const cleanBlob = new Blob([blob], { type: "audio/ogg; codecs=opus" });
     const filename = `${selectedChat}/${Date.now()}.ogg`;
     const { error } = await supabase.storage
@@ -175,11 +177,13 @@ export default function Atendimento() {
           }),
         });
         if (!response.ok) throw new Error("Webhook error");
+        console.log("[Atendimento] Áudio enviado com sucesso:", urlData.publicUrl);
         toast({ title: "Áudio enviado!" });
       } catch {
         toast({ title: "Erro ao enviar áudio", variant: "destructive" });
       }
     } else {
+      console.error("[Atendimento] Erro upload Supabase:", error);
       toast({ title: "Erro ao fazer upload do áudio", variant: "destructive" });
     }
   };
