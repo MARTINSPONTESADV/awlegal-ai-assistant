@@ -221,8 +221,17 @@ export default function Atendimento() {
   );
 
   const formatPhone = (id: string) => {
-    if (id.length >= 11) {
-      return `(${id.slice(0, 2)}) ${id.slice(2, 7)}-${id.slice(7, 11)}`;
+    // Full Brazilian number with country code: 5592999722659 (13 digits)
+    if (id.length === 13) {
+      return `+${id.slice(0, 2)} (${id.slice(2, 4)}) ${id.slice(4, 5)} ${id.slice(5, 9)}-${id.slice(9)}`;
+    }
+    // Brazilian number without country code: 92999722659 (11 digits)
+    if (id.length === 11) {
+      return `(${id.slice(0, 2)}) ${id.slice(2, 3)} ${id.slice(3, 7)}-${id.slice(7)}`;
+    }
+    // 10-digit landline
+    if (id.length === 10) {
+      return `(${id.slice(0, 2)}) ${id.slice(2, 6)}-${id.slice(6)}`;
     }
     return id;
   };
