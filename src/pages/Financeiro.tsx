@@ -14,6 +14,7 @@ import {
   fmtBRL, calcEscritorio, calcRepasse, isProcessoEncerrado, type ProcessoFinanceiro,
 } from "@/lib/financeiro";
 import MetricasAvancadas from "@/components/MetricasAvancadas";
+import { useTotalCausa } from "@/hooks/useTotalCausa";
 
 export default function Financeiro() {
   const navigate = useNavigate();
