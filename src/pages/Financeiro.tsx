@@ -60,9 +60,7 @@ export default function Financeiro() {
   const receitaGarantida = escritorioAcordos + escritorioExecucoes;
   const expectativaReceita = escritorioSentencas;
 
-  const causaTotal = processos.reduce((s, p) => s + Number(p.valor_causa || 0), 0);
-  const causaInativo = processos.filter(isEncerrado).reduce((s, p) => s + Number(p.valor_causa || 0), 0);
-  const causaAtivo = processos.filter(p => !isEncerrado(p)).reduce((s, p) => s + Number(p.valor_causa || 0), 0);
+  const { causaTotal, causaAtivo, causaInativo } = useTotalCausa();
 
   const drillDown = (filtro: string) => navigate(`/processos?filtroFinanceiro=${filtro}`);
 

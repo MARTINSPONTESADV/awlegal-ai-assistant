@@ -16,14 +16,16 @@ export function useTotalCausa(): CausaData {
     const load = async () => {
       const { data: procs } = await supabase
         .from("processos")
-        .select("valor_causa, situacao, status_pagamento_honorarios");
+        .select("valor_causa, situacao, status_pagamento_honorarios, fase_id, aux_fases(nome)");
       if (!procs) { setData(d => ({ ...d, loading: false })); return; }
 
       let total = 0, ativo = 0, inativo = 0;
       procs.forEach((p: any) => {
         const val = Number(p.valor_causa || 0);
         total += val;
-        if (isProcessoEncerrado(p)) {
+        const faseName = (p.aux_fases?.nome || "").toLowerCase();
+        const encerrado = isProcessoEncerrado(p) || faseName.includes("arquivamento");
+        if (encerrado) {
           inativo += val;
         } else {
           ativo += val;
