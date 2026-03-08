@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/sheet";
 import {
   Bot, BotOff, Send, Phone, User, Circle,
-  Search, Briefcase, Menu, Info, Pencil, Check, X,
+  Search, Briefcase, Menu, Info, Pencil, Check, X, Building2, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -25,11 +25,14 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manual-aw";
 
+type Canal = "resolva_ja" | "martins_pontes";
+
 interface Chat {
   whatsapp_numero: string;
   bot_ativo: boolean | null;
   last_intercept: string | null;
   nome_contato: string | null;
+  canal?: string | null;
   lastMessage?: string;
   lastMessageType?: string;
   lastTime?: string;
@@ -59,9 +62,9 @@ export default function Atendimento() {
   const [rightSheetOpen, setRightSheetOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [contactName, setContactName] = useState("");
+  const [canal, setCanal] = useState<Canal>("resolva_ja");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load chats from controle_bot
   useEffect(() => {
     async function load() {
       const { data } = await supabase.from("controle_bot").select("*");
@@ -79,6 +82,7 @@ export default function Atendimento() {
               bot_ativo: c.bot_ativo,
               last_intercept: c.last_intercept,
               nome_contato: c.nome_contato || null,
+              canal: (c as any).canal || null,
               lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
               lastMessageType: msgs?.[0]?.tipo_midia || "texto",
               lastTime: msgs?.[0]?.created_at || undefined,
@@ -92,7 +96,6 @@ export default function Atendimento() {
     load();
   }, []);
 
-  // Load messages + realtime subscription for selected chat
   useEffect(() => {
     if (!selectedChat) return;
     async function loadMsgs() {
@@ -126,7 +129,6 @@ export default function Atendimento() {
 
   const currentChat = chats.find((c) => c.whatsapp_numero === selectedChat);
 
-  // Sync contactName when selected chat changes
   useEffect(() => {
     if (currentChat) {
       setContactName(currentChat.nome_contato || "");
@@ -149,11 +151,11 @@ export default function Atendimento() {
     setEditingName(false);
     toast({ title: trimmed ? `Contato renomeado para "${trimmed}"` : "Nome removido" });
   };
+
   const toggleBot = async () => {
     if (!currentChat || !selectedChat) return;
     setLoadingBot(true);
     try {
-      // Check if record exists using the raw whatsapp_numero
       const { data: existing } = await supabase
         .from("controle_bot")
         .select("bot_ativo")
@@ -161,19 +163,12 @@ export default function Atendimento() {
         .maybeSingle();
 
       let newVal: boolean;
-
       if (!existing) {
-        // Record doesn't exist — create it with bot_ativo = true, then allow toggle
-        newVal = false; // User wants to lock the bot
-        await supabase
-          .from("controle_bot")
-          .insert({ whatsapp_numero: selectedChat, bot_ativo: newVal } as any);
+        newVal = false;
+        await supabase.from("controle_bot").insert({ whatsapp_numero: selectedChat, bot_ativo: newVal } as any);
       } else {
         newVal = !existing.bot_ativo;
-        const { error } = await supabase
-          .from("controle_bot")
-          .update({ bot_ativo: newVal })
-          .eq("whatsapp_numero", selectedChat);
+        const { error } = await supabase.from("controle_bot").update({ bot_ativo: newVal }).eq("whatsapp_numero", selectedChat);
         if (error) throw error;
       }
 
@@ -187,7 +182,6 @@ export default function Atendimento() {
         description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
       });
     } catch (err) {
-      console.error("[toggleBot] error:", err);
       toast({ title: "Erro ao alterar status do robô", variant: "destructive" });
     } finally {
       setLoadingBot(false);
@@ -215,74 +209,49 @@ export default function Atendimento() {
 
   const handleAudioSend = async (blob: Blob, extension: string = ".webm") => {
     if (!selectedChat) return;
-
-    // Force contentType to audio/webm regardless of what the browser reports
     const contentType = "audio/webm";
     const ext = extension.startsWith(".") ? extension : `.${extension}`;
     const filename = `${selectedChat}/${Date.now()}${ext}`;
 
-    console.log("[Atendimento] UPLOAD START — file:", filename, "blob size:", blob.size, "forced contentType:", contentType);
-
-    // Step 1: Upload to Supabase and WAIT for full completion
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("mensagens_audio")
-      .upload(filename, blob, {
-        contentType,
-        cacheControl: "3600",
-        upsert: false,
-      });
+      .upload(filename, blob, { contentType, cacheControl: "3600", upsert: false });
 
     if (uploadError) {
-      console.error("[Atendimento] UPLOAD FAILED:", uploadError);
       toast({ title: "Erro ao fazer upload do áudio", variant: "destructive" });
-      return; // STOP here — do NOT call webhook
+      return;
     }
 
-    console.log("[Atendimento] UPLOAD SUCCESS — path:", uploadData?.path);
-
-    // Step 2: Get public URL only AFTER confirmed upload
     const { data: urlData } = supabase.storage.from("mensagens_audio").getPublicUrl(filename);
     const publicUrl = urlData.publicUrl;
-    console.log("[Atendimento] PUBLIC URL:", publicUrl);
 
-    // Step 3: Send webhook only AFTER upload is 100% confirmed
     try {
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipo: "audio",
-          numero: selectedChat,
-          audioUrl: publicUrl,
-          options: { ptt: true },
-        }),
+        body: JSON.stringify({ tipo: "audio", numero: selectedChat, audioUrl: publicUrl, options: { ptt: true } }),
       });
       if (!response.ok) throw new Error(`Webhook HTTP ${response.status}`);
-      console.log("[Atendimento] WEBHOOK SUCCESS");
       toast({ title: "Áudio enviado!" });
-    } catch (webhookErr) {
-      console.error("[Atendimento] WEBHOOK FAILED:", webhookErr);
+    } catch {
       toast({ title: "Erro ao enviar áudio", variant: "destructive" });
     }
   };
 
-  const filteredChats = chats.filter((c) =>
-    c.whatsapp_numero.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredChats = chats.filter((c) => {
+    const matchSearch = c.whatsapp_numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.nome_contato || "").toLowerCase().includes(searchTerm.toLowerCase());
+    // Canal filter: if canal field exists use it, otherwise "resolva_ja" shows all (legacy), "martins_pontes" shows marked ones
+    const matchCanal = canal === "resolva_ja"
+      ? !c.canal || c.canal === "resolva_ja"
+      : c.canal === "martins_pontes";
+    return matchSearch && matchCanal;
+  });
 
   const formatPhone = (id: string) => {
-    // Full Brazilian number with country code: 5592999722659 (13 digits)
-    if (id.length === 13) {
-      return `+${id.slice(0, 2)} (${id.slice(2, 4)}) ${id.slice(4, 5)} ${id.slice(5, 9)}-${id.slice(9)}`;
-    }
-    // Brazilian number without country code: 92999722659 (11 digits)
-    if (id.length === 11) {
-      return `(${id.slice(0, 2)}) ${id.slice(2, 3)} ${id.slice(3, 7)}-${id.slice(7)}`;
-    }
-    // 10-digit landline
-    if (id.length === 10) {
-      return `(${id.slice(0, 2)}) ${id.slice(2, 6)}-${id.slice(6)}`;
-    }
+    if (id.length === 13) return `+${id.slice(0, 2)} (${id.slice(2, 4)}) ${id.slice(4, 5)} ${id.slice(5, 9)}-${id.slice(9)}`;
+    if (id.length === 11) return `(${id.slice(0, 2)}) ${id.slice(2, 3)} ${id.slice(3, 7)}-${id.slice(7)}`;
+    if (id.length === 10) return `(${id.slice(0, 2)}) ${id.slice(2, 6)}-${id.slice(6)}`;
     return id;
   };
 
@@ -296,15 +265,47 @@ export default function Atendimento() {
     if (isMobile) setLeftDrawerOpen(false);
   };
 
-  // ── Shared chat list content ──
+  // ── Canal Selector ──
+  const canalSelector = (
+    <div className="flex rounded-xl overflow-hidden border border-white/[0.08] shrink-0">
+      <button
+        onClick={() => setCanal("resolva_ja")}
+        className={cn(
+          "flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-all",
+          canal === "resolva_ja"
+            ? "bg-violet-500/20 text-violet-300 border-r border-white/[0.06]"
+            : "text-muted-foreground hover:text-foreground border-r border-white/[0.06]"
+        )}
+      >
+        <Zap className="h-3 w-3" />
+        Resolva Já
+      </button>
+      <button
+        onClick={() => setCanal("martins_pontes")}
+        className={cn(
+          "flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-all",
+          canal === "martins_pontes"
+            ? "bg-cyan-500/20 text-cyan-300"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <Building2 className="h-3 w-3" />
+        Martins Pontes
+      </button>
+    </div>
+  );
+
+  // ── Chat list ──
   const chatListContent = (
     <>
-      <div className="p-3 border-b border-border">
+      {/* Canal selector inside list */}
+      <div className="px-3 pt-3 pb-2">{canalSelector}</div>
+      <div className="px-3 pb-2">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Buscar conversa..."
-            className="pl-9 bg-background/50 border-border"
+            className="pl-8 h-8 text-sm bg-white/[0.04] border-white/[0.08]"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -316,25 +317,25 @@ export default function Atendimento() {
             key={chat.whatsapp_numero}
             onClick={() => handleSelectChat(chat.whatsapp_numero)}
             className={cn(
-              "w-full flex items-start gap-3 p-3 text-left transition-colors border-b border-border/50 hover:bg-accent/50",
-              selectedChat === chat.whatsapp_numero && "bg-accent border-l-2 border-l-primary"
+              "w-full flex items-start gap-3 px-3 py-3 text-left transition-all border-b border-white/[0.04] hover:bg-white/[0.05]",
+              selectedChat === chat.whatsapp_numero && "bg-violet-500/10 border-l-2 border-l-violet-400"
             )}
           >
             <div className="relative shrink-0">
-              <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
-                <Phone className="h-4 w-4 text-primary" />
+              <div className="h-9 w-9 rounded-full bg-violet-500/15 ring-1 ring-violet-400/20 flex items-center justify-center">
+                <Phone className="h-3.5 w-3.5 text-violet-400" />
               </div>
               {chat.bot_ativo && (
-                <Circle className="absolute -bottom-0.5 -right-0.5 h-3 w-3 fill-primary text-primary" />
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-background" />
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-1">
                 <span className="text-sm font-medium text-foreground truncate">
                   {chat.nome_contato || formatPhone(chat.whatsapp_numero)}
                 </span>
                 {chat.lastTime && (
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-[10px] text-muted-foreground shrink-0">
                     {format(new Date(chat.lastTime), "HH:mm")}
                   </span>
                 )}
@@ -344,27 +345,33 @@ export default function Atendimento() {
               </p>
               <div className="flex items-center gap-1 mt-1">
                 {chat.bot_ativo ? (
-                  <Bot className="h-3 w-3 text-primary" />
+                  <Bot className="h-3 w-3 text-violet-400" />
                 ) : (
-                  <User className="h-3 w-3 text-destructive" />
+                  <User className="h-3 w-3 text-amber-400" />
                 )}
+                <span className="text-[10px] text-muted-foreground">
+                  {chat.bot_ativo ? "Bot ativo" : "Humano"}
+                </span>
               </div>
             </div>
           </button>
         ))}
         {filteredChats.length === 0 && (
-          <p className="text-center text-sm text-muted-foreground py-8">Nenhuma conversa encontrada</p>
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+            <Search className="h-8 w-8 opacity-30" />
+            <p className="text-sm">Nenhuma conversa encontrada</p>
+          </div>
         )}
       </ScrollArea>
     </>
   );
 
-  // ── Shared right panel content ──
+  // ── Right info panel ──
   const rightPanelContent = currentChat ? (
     <>
       <div className="text-center">
-        <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-2">
-          <Phone className="h-6 w-6 text-primary" />
+        <div className="h-14 w-14 rounded-full bg-violet-500/15 ring-2 ring-violet-400/25 flex items-center justify-center mx-auto mb-2">
+          <Phone className="h-6 w-6 text-violet-400" />
         </div>
         {editingName ? (
           <div className="flex items-center gap-1 justify-center mt-1">
@@ -372,12 +379,12 @@ export default function Atendimento() {
               value={contactName}
               onChange={(e) => setContactName(e.target.value)}
               placeholder="Nome do contato"
-              className="h-8 text-sm text-center max-w-[180px]"
+              className="h-8 text-sm text-center max-w-[160px] bg-white/[0.05] border-white/[0.1]"
               onKeyDown={(e) => e.key === "Enter" && saveContactName()}
               autoFocus
             />
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={saveContactName}>
-              <Check className="h-3.5 w-3.5 text-primary" />
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
             </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingName(false); setContactName(currentChat.nome_contato || ""); }}>
               <X className="h-3.5 w-3.5 text-destructive" />
@@ -385,7 +392,7 @@ export default function Atendimento() {
           </div>
         ) : (
           <div className="flex items-center justify-center gap-1 mt-1">
-            <p className="font-medium text-sm">
+            <p className="font-semibold text-sm text-foreground">
               {currentChat.nome_contato || formatPhone(selectedChat || "")}
             </p>
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingName(true)}>
@@ -394,15 +401,15 @@ export default function Atendimento() {
           </div>
         )}
         {currentChat.nome_contato && (
-          <p className="text-xs text-muted-foreground">{formatPhone(selectedChat || "")}</p>
+          <p className="text-xs text-muted-foreground font-mono">{formatPhone(selectedChat || "")}</p>
         )}
         <Badge
           variant="outline"
           className={cn(
-            "mt-1",
+            "mt-2 text-xs",
             currentChat.bot_ativo
-              ? "border-primary/50 text-primary"
-              : "border-destructive/50 text-destructive"
+              ? "border-violet-400/40 text-violet-300 bg-violet-500/10"
+              : "border-amber-400/40 text-amber-300 bg-amber-500/10"
           )}
         >
           {currentChat.bot_ativo ? "🤖 Bot Ativo" : "👤 Humano"}
@@ -413,7 +420,10 @@ export default function Atendimento() {
         onClick={toggleBot}
         disabled={loadingBot}
         variant={currentChat.bot_ativo ? "destructive" : "default"}
-        className="w-full font-bold text-sm py-5"
+        className={cn(
+          "w-full font-bold text-sm py-5",
+          !currentChat.bot_ativo && "bg-violet-600 hover:bg-violet-700"
+        )}
       >
         {currentChat.bot_ativo ? (
           <><BotOff className="h-4 w-4 mr-2" /> TRAVAR ROBÔ</>
@@ -422,17 +432,23 @@ export default function Atendimento() {
         )}
       </Button>
 
-      <div className="border-t border-border pt-4 space-y-3">
-        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Informações</h4>
+      <div className="border-t border-white/[0.06] pt-4 space-y-3">
+        <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Informações</h4>
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Status Bot</span>
-            <Badge variant="secondary">{currentChat.bot_ativo ? "Ativo" : "Pausado"}</Badge>
+            <span className="text-muted-foreground text-xs">Status Bot</span>
+            <Badge variant="secondary" className="text-xs">{currentChat.bot_ativo ? "Ativo" : "Pausado"}</Badge>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground text-xs">Canal</span>
+            <Badge variant="outline" className="text-xs capitalize">
+              {canal === "resolva_ja" ? "Resolva Já" : "Martins Pontes"}
+            </Badge>
           </div>
           {currentChat.last_intercept && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Última interação</span>
-              <span className="text-foreground text-xs">
+              <span className="text-muted-foreground text-xs">Última interação</span>
+              <span className="text-foreground text-xs font-mono">
                 {format(new Date(currentChat.last_intercept), "dd/MM HH:mm")}
               </span>
             </div>
@@ -440,10 +456,10 @@ export default function Atendimento() {
         </div>
       </div>
 
-      <div className="border-t border-border pt-4">
+      <div className="border-t border-white/[0.06] pt-4">
         <Button
           variant="outline"
-          className="w-full"
+          className="w-full border-white/[0.08] hover:bg-white/[0.05]"
           onClick={() => {
             toast({ title: "Criar processo a partir do lead", description: "Funcionalidade em desenvolvimento" });
           }}
@@ -454,23 +470,26 @@ export default function Atendimento() {
       </div>
     </>
   ) : (
-    <p className="text-sm text-muted-foreground text-center mt-8">Selecione um chat</p>
+    <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
+      <Phone className="h-8 w-8 opacity-30" />
+      <p className="text-sm">Selecione um chat</p>
+    </div>
   );
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] gap-0 -mx-4 md:-mx-8 -my-6">
+    <div className="flex h-[calc(100vh-5rem)] gap-0 -mx-4 md:-mx-8 -my-6 overflow-hidden">
       {/* ── Column 1: Chat list ── */}
       {isMobile ? (
         <Sheet open={leftDrawerOpen} onOpenChange={setLeftDrawerOpen}>
-          <SheetContent side="left" className="w-[85vw] max-w-sm p-0 flex flex-col">
-            <SheetHeader className="p-3 border-b border-border">
-              <SheetTitle>Conversas</SheetTitle>
+          <SheetContent side="left" className="w-[85vw] max-w-sm p-0 flex flex-col glass-sidebar">
+            <SheetHeader className="p-3 border-b border-white/[0.06]">
+              <SheetTitle className="text-sm">Conversas</SheetTitle>
             </SheetHeader>
             {chatListContent}
           </SheetContent>
         </Sheet>
       ) : (
-        <div className="w-80 shrink-0 border-r border-border bg-card/50 flex flex-col">
+        <div className="w-72 shrink-0 border-r border-white/[0.06] flex flex-col bg-white/[0.02] backdrop-blur-sm">
           {chatListContent}
         </div>
       )}
@@ -479,56 +498,69 @@ export default function Atendimento() {
       <div className="flex-1 flex flex-col min-w-0">
         {selectedChat ? (
           <>
-            <div className="h-14 flex items-center justify-between px-4 border-b border-border bg-card/30">
-              <div className="flex items-center gap-3">
+            {/* Chat topbar */}
+            <div className="h-13 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.02] backdrop-blur-sm shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
                 {isMobile && (
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLeftDrawerOpen(true)}>
-                    <Menu className="h-5 w-5" />
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setLeftDrawerOpen(true)}>
+                    <Menu className="h-4 w-4" />
                   </Button>
                 )}
-                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
-                  <Phone className="h-4 w-4 text-primary" />
+                <div className="h-8 w-8 rounded-full bg-violet-500/15 flex items-center justify-center shrink-0">
+                  <Phone className="h-3.5 w-3.5 text-violet-400" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium">{currentChat?.nome_contato || formatPhone(selectedChat)}</p>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">
+                    {currentChat?.nome_contato || formatPhone(selectedChat)}
+                  </p>
                   <p className="text-[10px] text-muted-foreground">
                     {currentChat?.bot_ativo ? "🤖 Bot ativo" : "👤 Humano atendendo"}
                   </p>
                 </div>
               </div>
-              {isMobile && (
-                <Sheet open={rightSheetOpen} onOpenChange={setRightSheetOpen}>
-                  <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Info className="h-5 w-5" />
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="right" className="w-[85vw] max-w-sm flex flex-col gap-4 overflow-y-auto">
-                    <SheetHeader>
-                      <SheetTitle>Informações do Lead</SheetTitle>
-                    </SheetHeader>
-                    {rightPanelContent}
-                  </SheetContent>
-                </Sheet>
-              )}
+              {/* Canal badge in chat header */}
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge variant="outline" className={cn(
+                  "text-[10px] hidden sm:flex",
+                  canal === "resolva_ja" ? "border-violet-400/30 text-violet-300" : "border-cyan-400/30 text-cyan-300"
+                )}>
+                  {canal === "resolva_ja" ? "Resolva Já" : "Martins Pontes"}
+                </Badge>
+                {isMobile && (
+                  <Sheet open={rightSheetOpen} onOpenChange={setRightSheetOpen}>
+                    <SheetTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Info className="h-4 w-4" />
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent side="right" className="w-[85vw] max-w-sm flex flex-col gap-4 overflow-y-auto glass-sidebar">
+                      <SheetHeader>
+                        <SheetTitle>Informações do Lead</SheetTitle>
+                      </SheetHeader>
+                      {rightPanelContent}
+                    </SheetContent>
+                  </Sheet>
+                )}
+              </div>
             </div>
 
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-3">
+            {/* Messages */}
+            <ScrollArea className="flex-1 px-4 py-3">
+              <div className="space-y-3 max-w-3xl mx-auto">
                 {mensagens.map((msg) => {
                   const outgoing = isOutgoing(msg);
                   return (
                     <div key={msg.id} className={cn("flex", outgoing ? "justify-end" : "justify-start")}>
                       <div
                         className={cn(
-                          "max-w-[70%] rounded-2xl px-4 py-2 text-sm",
+                          "max-w-[72%] rounded-2xl px-4 py-2.5 text-sm shadow-sm",
                           outgoing
-                            ? "bg-primary text-primary-foreground rounded-br-sm"
-                            : "bg-muted text-muted-foreground rounded-bl-sm"
+                            ? "bg-violet-600/80 text-white rounded-br-sm backdrop-blur-sm"
+                            : "bg-white/[0.06] text-foreground rounded-bl-sm border border-white/[0.07] backdrop-blur-sm"
                         )}
                       >
                         {msg.origem && (
-                          <p className={cn("text-[9px] font-semibold uppercase mb-0.5", outgoing ? "text-primary-foreground/70" : "text-muted-foreground/70")}>
+                          <p className={cn("text-[9px] font-semibold uppercase mb-0.5 tracking-wide", outgoing ? "text-violet-200/70" : "text-muted-foreground/70")}>
                             {msg.origem}
                           </p>
                         )}
@@ -537,10 +569,10 @@ export default function Atendimento() {
                         ) : msg.tipo_midia === "imagem" || msg.tipo_midia === "image" ? (
                           <img src={msg.conteudo || ""} alt="imagem" className="rounded-lg max-w-full max-h-60" />
                         ) : (
-                          <p className="whitespace-pre-wrap">{msg.conteudo}</p>
+                          <p className="whitespace-pre-wrap leading-relaxed">{msg.conteudo}</p>
                         )}
                         {msg.created_at && (
-                          <p className={cn("text-[10px] mt-1", outgoing ? "text-primary-foreground/60" : "text-muted-foreground/60")}>
+                          <p className={cn("text-[10px] mt-1 font-mono", outgoing ? "text-violet-200/50 text-right" : "text-muted-foreground/60")}>
                             {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
                           </p>
                         )}
@@ -552,38 +584,50 @@ export default function Atendimento() {
               </div>
             </ScrollArea>
 
-            <div className="p-3 border-t border-border bg-card/30">
-              <div className="flex items-center gap-2">
+            {/* Input bar */}
+            <div className="p-3 border-t border-white/[0.06] bg-white/[0.02] backdrop-blur-sm">
+              <div className="flex items-center gap-2 max-w-3xl mx-auto">
                 <AudioRecorder onSend={handleAudioSend} disabled={sending} />
                 <Input
                   placeholder="Digite uma mensagem..."
                   value={newMsg}
                   onChange={(e) => setNewMsg(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                  className="flex-1 bg-background/50"
+                  className="flex-1 bg-white/[0.04] border-white/[0.08] focus-visible:ring-violet-400/40"
                   disabled={sending}
                 />
-                <Button onClick={sendMessage} size="icon" className="bg-primary hover:bg-primary/90" disabled={sending}>
+                <Button
+                  onClick={sendMessage}
+                  size="icon"
+                  className="bg-violet-600 hover:bg-violet-700 shrink-0"
+                  disabled={sending}
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
             {isMobile && (
-              <Button variant="outline" onClick={() => setLeftDrawerOpen(true)}>
+              <Button variant="outline" onClick={() => setLeftDrawerOpen(true)} className="border-white/[0.08]">
                 <Menu className="h-4 w-4 mr-2" /> Abrir Conversas
               </Button>
             )}
-            <p>Selecione uma conversa</p>
+            <div className="text-center">
+              <Phone className="h-12 w-12 mx-auto mb-3 opacity-20" />
+              <p className="text-sm">Selecione uma conversa para começar</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">
+                Canal: {canal === "resolva_ja" ? "Resolva Já" : "Martins Pontes"}
+              </p>
+            </div>
           </div>
         )}
       </div>
 
       {/* ── Column 3: Lead control panel (desktop only) ── */}
       {!isMobile && (
-        <div className="w-72 shrink-0 border-l border-border bg-card/50 flex flex-col p-4 gap-4 overflow-y-auto">
+        <div className="w-68 shrink-0 border-l border-white/[0.06] flex flex-col p-4 gap-4 overflow-y-auto bg-white/[0.02] backdrop-blur-sm">
           {rightPanelContent}
         </div>
       )}
