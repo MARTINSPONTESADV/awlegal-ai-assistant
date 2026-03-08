@@ -477,7 +477,7 @@ export default function Atendimento() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] gap-0 -mx-4 md:-mx-8 -my-6 overflow-hidden">
+    <div className="flex h-[calc(100vh-5rem)] max-h-[calc(100vh-5rem)] gap-0 -mx-4 md:-mx-8 -my-6 overflow-hidden">
       {/* ── Column 1: Chat list ── */}
       {isMobile ? (
         <Sheet open={leftDrawerOpen} onOpenChange={setLeftDrawerOpen}>
@@ -489,13 +489,13 @@ export default function Atendimento() {
           </SheetContent>
         </Sheet>
       ) : (
-        <div className="w-72 shrink-0 border-r border-white/[0.06] flex flex-col bg-white/[0.02] backdrop-blur-sm">
+        <div className="w-72 shrink-0 border-r border-white/[0.06] flex flex-col bg-white/[0.02] backdrop-blur-sm h-full hidden md:flex">
           {chatListContent}
         </div>
       )}
 
       {/* ── Column 2: Chat window ── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full">
         {selectedChat ? (
           <>
             {/* Chat topbar */}
@@ -545,15 +545,15 @@ export default function Atendimento() {
             </div>
 
             {/* Messages */}
-            <ScrollArea className="flex-1 px-4 py-3">
-              <div className="space-y-3 max-w-3xl mx-auto">
+            <ScrollArea className="flex-1 min-h-0 bg-background/30">
+              <div className="p-4 space-y-3 max-w-3xl mx-auto w-full">
                 {mensagens.map((msg) => {
                   const outgoing = isOutgoing(msg);
                   return (
                     <div key={msg.id} className={cn("flex", outgoing ? "justify-end" : "justify-start")}>
                       <div
                         className={cn(
-                          "max-w-[72%] rounded-2xl px-4 py-2.5 text-sm shadow-sm",
+                          "max-w-[85%] sm:max-w-[72%] rounded-2xl px-4 py-2.5 text-sm shadow-sm",
                           outgoing
                             ? "bg-violet-600/80 text-white rounded-br-sm backdrop-blur-sm"
                             : "bg-white/[0.06] text-foreground rounded-bl-sm border border-white/[0.07] backdrop-blur-sm"
@@ -585,7 +585,7 @@ export default function Atendimento() {
             </ScrollArea>
 
             {/* Input bar */}
-            <div className="p-3 border-t border-white/[0.06] bg-white/[0.02] backdrop-blur-sm">
+            <div className="p-3 border-t border-white/[0.06] bg-white/[0.02] backdrop-blur-sm shrink-0">
               <div className="flex items-center gap-2 max-w-3xl mx-auto">
                 <AudioRecorder onSend={handleAudioSend} disabled={sending} />
                 <Input
@@ -627,7 +627,7 @@ export default function Atendimento() {
 
       {/* ── Column 3: Lead control panel (desktop only) ── */}
       {!isMobile && (
-        <div className="w-68 shrink-0 border-l border-white/[0.06] flex flex-col p-4 gap-4 overflow-y-auto bg-white/[0.02] backdrop-blur-sm">
+        <div className="w-68 shrink-0 border-l border-white/[0.06] flex flex-col p-4 gap-4 overflow-y-auto bg-white/[0.02] backdrop-blur-sm h-full min-h-0">
           {rightPanelContent}
         </div>
       )}
