@@ -94,8 +94,13 @@ export default function Dashboard() {
 
   return (
     <>
-      <h2 className="text-3xl font-bold mb-2 text-foreground">Dashboard</h2>
-      <p className="text-muted-foreground mb-8">Visão geral do escritório</p>
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-foreground mb-1">
+          Dashboard
+          <span className="ml-2 text-cyan-400/60 text-sm font-mono align-middle">// overview</span>
+        </h2>
+        <p className="text-muted-foreground text-sm">Visão geral do escritório em tempo real</p>
+      </div>
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 mb-8">
         {cards.map((c) => (
@@ -105,8 +110,8 @@ export default function Dashboard() {
                 <c.icon className="h-6 w-6 text-primary" />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl font-bold text-foreground truncate">{c.value}</p>
-                <p className="text-sm text-muted-foreground">{c.label}</p>
+                <p className="kpi-value text-2xl font-bold text-foreground truncate">{c.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 uppercase tracking-wide">{c.label}</p>
               </div>
             </div>
           </SpotlightCard>
@@ -153,7 +158,7 @@ export default function Dashboard() {
             {proximosPrazos.map((p) => (
               <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-accent/50 transition-colors">
                 <span className="font-medium text-sm text-foreground">{p.titulo}</span>
-                <span className="text-sm text-primary font-mono">
+                <span className="kpi-value text-sm text-cyan-400">
                   {new Date(p.data_prazo + "T00:00:00").toLocaleDateString("pt-BR")}
                 </span>
               </div>

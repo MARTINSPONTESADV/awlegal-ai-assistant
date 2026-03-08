@@ -198,7 +198,7 @@ export default function MetricasAvancadas() {
               <DollarSign className="h-7 w-7 text-emerald-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{fmtBRL(receitaMesAtual)}</p>
+              <p className="kpi-value text-2xl font-bold text-foreground">{fmtBRL(receitaMesAtual)}</p>
               <p className="text-sm text-muted-foreground">Receita deste Mês</p>
               <div className="flex items-center gap-1 text-xs mt-0.5">
                 {variacaoMes > 0 ? (
@@ -219,7 +219,7 @@ export default function MetricasAvancadas() {
               <Clock className="h-7 w-7 text-blue-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{formatDias(tempoMedioDuracao)}</p>
+              <p className="kpi-value text-2xl font-bold text-foreground">{formatDias(tempoMedioDuracao)}</p>
               <p className="text-sm text-muted-foreground">Tempo Médio de Duração</p>
               <p className="text-xs text-muted-foreground/70 mt-0.5">Distribuição → Encerramento</p>
             </div>
@@ -232,7 +232,7 @@ export default function MetricasAvancadas() {
               <Activity className="h-7 w-7 text-purple-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{formatDias(tempoMedioExecucao)}</p>
+              <p className="kpi-value text-2xl font-bold text-foreground">{formatDias(tempoMedioExecucao)}</p>
               <p className="text-sm text-muted-foreground">Tempo Médio em Execução</p>
               <p className="text-xs text-muted-foreground/70 mt-0.5">Data de Execução → Encerramento/Hoje</p>
             </div>
