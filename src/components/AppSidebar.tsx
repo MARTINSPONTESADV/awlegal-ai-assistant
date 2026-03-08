@@ -5,6 +5,7 @@ import {
   LayoutDashboard, Users, Briefcase, Newspaper, CalendarDays,
   MessageSquare, BarChart3, FileText, DollarSign, Search,
   Shield, DatabaseBackup, Settings, Scale, Headphones, TrendingUp,
+  Zap,
 } from "lucide-react";
 import {
   Sidebar,
@@ -20,14 +21,14 @@ import {
 } from "@/components/ui/sidebar";
 
 const hubJuridico = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Clientes", url: "/clientes", icon: Users },
-  { title: "Processos", url: "/processos", icon: Briefcase },
-  { title: "Publicações", url: "/publicacoes", icon: Newspaper },
-  { title: "Agenda", url: "/agenda", icon: CalendarDays },
-  { title: "Diligências", url: "/diligencias", icon: Search },
-  { title: "Relatórios", url: "/relatorios", icon: BarChart3 },
-  { title: "Gerador Docs", url: "/generator", icon: FileText },
+  { title: "Dashboard",    url: "/dashboard",   icon: LayoutDashboard },
+  { title: "Clientes",     url: "/clientes",    icon: Users },
+  { title: "Processos",    url: "/processos",   icon: Briefcase },
+  { title: "Publicações",  url: "/publicacoes", icon: Newspaper },
+  { title: "Agenda",       url: "/agenda",      icon: CalendarDays },
+  { title: "Diligências",  url: "/diligencias", icon: Search },
+  { title: "Relatórios",   url: "/relatorios",  icon: BarChart3 },
+  { title: "Gerador Docs", url: "/generator",   icon: FileText },
 ];
 
 const centralResolvaJa = [
@@ -35,8 +36,8 @@ const centralResolvaJa = [
 ];
 
 const comercialCrm = [
-  { title: "Funil de Vendas", url: "/crm", icon: TrendingUp },
-  { title: "Financeiro", url: "/financeiro", icon: DollarSign },
+  { title: "Funil de Vendas", url: "/crm",       icon: TrendingUp },
+  { title: "Financeiro",      url: "/financeiro", icon: DollarSign },
 ];
 
 const configItems = [
@@ -44,6 +45,14 @@ const configItems = [
 ];
 
 type SectionColor = "blue" | "green" | "purple" | "muted";
+
+/** Tailwind CSS colour tokens per section */
+const colorMap: Record<SectionColor, { label: string; active: string; dot: string }> = {
+  blue:   { label: "text-cyan-400",    active: "bg-cyan-500/15 text-cyan-300",    dot: "bg-cyan-400" },
+  green:  { label: "text-emerald-400", active: "bg-emerald-500/15 text-emerald-300", dot: "bg-emerald-400" },
+  purple: { label: "text-violet-400",  active: "bg-violet-500/15 text-violet-300",  dot: "bg-violet-400" },
+  muted:  { label: "text-muted-foreground", active: "bg-muted text-foreground",  dot: "bg-slate-500" },
+};
 
 function SidebarSection({
   label,
@@ -59,42 +68,39 @@ function SidebarSection({
   collapsed: boolean;
 }) {
   const location = useLocation();
-
-  const colorMap: Record<SectionColor, string> = {
-    blue: "text-blue-400",
-    green: "text-emerald-400",
-    purple: "text-purple-400",
-    muted: "text-muted-foreground",
-  };
-
-  const activeBgMap: Record<SectionColor, string> = {
-    blue: "bg-blue-500/15 text-blue-400",
-    green: "bg-emerald-500/15 text-emerald-400",
-    purple: "bg-purple-500/15 text-purple-400",
-    muted: "bg-muted text-foreground",
-  };
+  const { label: labelCls, active: activeCls, dot: dotCls } = colorMap[color];
 
   return (
     <SidebarGroup>
       {!collapsed && (
-        <SidebarGroupLabel className={`text-[10px] uppercase tracking-widest ${colorMap[color]} opacity-80`}>
-          {emoji} {label}
+        <SidebarGroupLabel
+          className={`text-[9px] uppercase tracking-[0.18em] font-semibold ${labelCls} opacity-70 px-3 pt-3 pb-1 flex items-center gap-1.5`}
+        >
+          {/* Tiny colour dot */}
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotCls} opacity-80`} />
+          {label}
         </SidebarGroupLabel>
       )}
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
-            const isActive = location.pathname === item.url || location.pathname.startsWith(item.url + "/");
+            const isActive =
+              location.pathname === item.url ||
+              location.pathname.startsWith(item.url + "/");
             return (
               <SidebarMenuItem key={item.url}>
                 <SidebarMenuButton
                   asChild
                   tooltip={item.title}
-                  className={isActive ? activeBgMap[color] : "text-sidebar-foreground hover:bg-sidebar-accent"}
+                  className={
+                    isActive
+                      ? `${activeCls} rounded-xl mx-1`
+                      : "text-sidebar-foreground hover:bg-white/[0.06] hover:text-foreground rounded-xl mx-1 transition-colors"
+                  }
                 >
                   <NavLink to={item.url} end className="" activeClassName="">
                     <item.icon className="h-4 w-4 shrink-0" />
-                    {!collapsed && <span>{item.title}</span>}
+                    {!collapsed && <span className="text-sm">{item.title}</span>}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -113,29 +119,36 @@ export function AppSidebar() {
   const location = useLocation();
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar-background">
-      <div className="flex items-center h-14 px-3 border-b border-sidebar-border shrink-0">
-        {!collapsed ? (
-          <div className="flex items-center gap-2">
-            <Scale className="h-5 w-5 text-purple-400" />
+    <Sidebar
+      collapsible="icon"
+      className="border-none bg-transparent h-full"
+    >
+      {/* Logo / brand header */}
+      <div className={`flex items-center h-14 shrink-0 border-b border-white/[0.06] ${collapsed ? "justify-center px-2" : "px-4 gap-3"}`}>
+        {/* Neon icon backdrop */}
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/15 ring-1 ring-violet-400/30 shrink-0">
+          <Scale className="h-4 w-4 text-violet-400" />
+        </div>
+        {!collapsed && (
+          <div className="flex flex-col leading-tight">
             <span className="font-bold text-sm tracking-wide text-foreground">AW LEGAL</span>
+            <span className="text-[9px] text-cyan-400/70 uppercase tracking-widest font-mono">Legaltech</span>
           </div>
-        ) : (
-          <Scale className="h-5 w-5 text-purple-400 mx-auto" />
         )}
       </div>
 
-      <SidebarContent className="py-2">
-        <SidebarSection label="Hub Jurídico" emoji="⚖️" items={hubJuridico} color="blue" collapsed={collapsed} />
+      <SidebarContent className="py-1 overflow-y-auto scrollbar-hide">
+        <SidebarSection label="Hub Jurídico"     emoji="⚖️" items={hubJuridico}     color="blue"   collapsed={collapsed} />
         <SidebarSection label="Central Resolva Já" emoji="💬" items={centralResolvaJa} color="green" collapsed={collapsed} />
-        <SidebarSection label="Comercial CRM" emoji="📈" items={comercialCrm} color="purple" collapsed={collapsed} />
-        <SidebarSection label="Configurações" emoji="⚙️" items={configItems} color="muted" collapsed={collapsed} />
+        <SidebarSection label="Comercial CRM"    emoji="📈" items={comercialCrm}    color="purple" collapsed={collapsed} />
+        <SidebarSection label="Configurações"    emoji="⚙️" items={configItems}     color="muted"  collapsed={collapsed} />
 
         {isAdmin && (
           <SidebarGroup>
             {!collapsed && (
-              <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-red-400/80">
-                🛡️ Admin
+              <SidebarGroupLabel className="text-[9px] uppercase tracking-[0.18em] font-semibold text-red-400/70 px-3 pt-3 pb-1 flex items-center gap-1.5">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400 opacity-80" />
+                Admin
               </SidebarGroupLabel>
             )}
             <SidebarGroupContent>
@@ -144,11 +157,15 @@ export function AppSidebar() {
                   <SidebarMenuButton
                     asChild
                     tooltip="Administração"
-                    className={location.pathname === "/admin" ? "bg-red-500/15 text-red-400" : "text-sidebar-foreground hover:bg-sidebar-accent"}
+                    className={
+                      location.pathname === "/admin"
+                        ? "bg-red-500/15 text-red-300 rounded-xl mx-1"
+                        : "text-sidebar-foreground hover:bg-white/[0.06] hover:text-foreground rounded-xl mx-1 transition-colors"
+                    }
                   >
                     <NavLink to="/admin" end className="" activeClassName="">
                       <Shield className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span>Administração</span>}
+                      {!collapsed && <span className="text-sm">Administração</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -158,9 +175,16 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-2">
-        {!collapsed && (
-          <p className="text-[10px] text-muted-foreground text-center">AW LegalTech v2.0</p>
+      <SidebarFooter className="border-t border-white/[0.05] p-3">
+        {!collapsed ? (
+          <div className="flex items-center gap-2">
+            <Zap className="h-3 w-3 text-cyan-400/60 shrink-0" />
+            <p className="text-[9px] text-muted-foreground font-mono tracking-widest uppercase">
+              AW Legaltech v2.0
+            </p>
+          </div>
+        ) : (
+          <Zap className="h-3 w-3 text-cyan-400/50 mx-auto" />
         )}
       </SidebarFooter>
     </Sidebar>

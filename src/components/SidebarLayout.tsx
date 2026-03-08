@@ -11,22 +11,39 @@ export function SidebarLayout() {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-background">
-        <AppSidebar />
+      {/* Full-screen deep space canvas */}
+      <div className="min-h-screen flex w-full bg-background relative overflow-hidden">
+        {/* Ambient light orbs in background */}
+        <div className="mesh-blob mesh-blob-1 pointer-events-none" />
+        <div className="mesh-blob mesh-blob-2 pointer-events-none" />
+        <div className="mesh-blob mesh-blob-3 pointer-events-none" />
 
-        <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 flex items-center justify-between border-b border-border bg-card/50 backdrop-blur-sm px-4 shrink-0 z-10">
+        {/* Floating sidebar – margin + rounded corners to "detach" it from screen edge */}
+        <div className="relative z-20 flex flex-col p-3 shrink-0">
+          <div className="h-full rounded-2xl overflow-hidden glass-sidebar border border-white/[0.06]">
+            <AppSidebar />
+          </div>
+        </div>
+
+        {/* Main content column */}
+        <div className="flex-1 flex flex-col min-w-0 z-10">
+          {/* Glassy topbar header */}
+          <header className="h-14 flex items-center justify-between px-4 shrink-0 sticky top-0 z-30
+            glass-card border-b border-white/[0.06] backdrop-blur-xl">
             <div className="flex items-center gap-2">
-              <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
+              <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors" />
             </div>
             <GlobalSearch />
             <div className="flex items-center gap-2">
               <HeaderAlerts />
-              <span className="text-xs text-muted-foreground hidden md:inline">{user?.email}</span>
+              <span className="text-xs text-muted-foreground hidden md:inline font-mono">
+                {user?.email}
+              </span>
               <UserPanel />
             </div>
           </header>
 
+          {/* Page content */}
           <main className="flex-1 overflow-y-auto">
             <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-6 animate-fade-in">
               <Outlet />
