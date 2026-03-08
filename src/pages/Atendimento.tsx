@@ -477,7 +477,7 @@ export default function Atendimento() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] max-h-[calc(100vh-5rem)] gap-0 -mx-4 md:-mx-8 -my-6 overflow-hidden">
+    <div className="flex h-[calc(100vh-5rem)] gap-0 -mx-4 md:-mx-8 -my-6 overflow-hidden relative">
       {/* ── Column 1: Chat list ── */}
       {isMobile ? (
         <Sheet open={leftDrawerOpen} onOpenChange={setLeftDrawerOpen}>
@@ -489,13 +489,13 @@ export default function Atendimento() {
           </SheetContent>
         </Sheet>
       ) : (
-        <div className="w-72 shrink-0 border-r border-white/[0.06] flex flex-col bg-white/[0.02] backdrop-blur-sm h-full hidden md:flex">
+        <div className="w-72 shrink-0 border-r border-white/[0.06] flex flex-col bg-white/[0.02] backdrop-blur-sm h-full hidden md:flex overflow-hidden">
           {chatListContent}
         </div>
       )}
 
       {/* ── Column 2: Chat window ── */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {selectedChat ? (
           <>
             {/* Chat topbar */}
@@ -545,7 +545,7 @@ export default function Atendimento() {
             </div>
 
             {/* Messages */}
-            <ScrollArea className="flex-1 min-h-0 bg-background/30">
+            <div className="flex-1 overflow-y-auto min-h-0 bg-background/30 w-full relative">
               <div className="p-4 space-y-3 max-w-3xl mx-auto w-full">
                 {mensagens.map((msg) => {
                   const outgoing = isOutgoing(msg);
@@ -582,7 +582,7 @@ export default function Atendimento() {
                 })}
                 <div ref={messagesEndRef} />
               </div>
-            </ScrollArea>
+            </div>
 
             {/* Input bar */}
             <div className="p-3 border-t border-white/[0.06] bg-white/[0.02] backdrop-blur-sm shrink-0">
