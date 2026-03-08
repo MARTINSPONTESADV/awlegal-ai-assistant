@@ -477,7 +477,7 @@ export default function Atendimento() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] gap-0 -mx-4 md:-mx-8 -my-6 overflow-hidden relative">
+    <div className="flex h-[calc(100vh-6rem)] gap-0 -mx-4 md:-mx-8 -my-6 overflow-hidden relative">
       {/* ── Column 1: Chat list ── */}
       {isMobile ? (
         <Sheet open={leftDrawerOpen} onOpenChange={setLeftDrawerOpen}>
@@ -495,11 +495,11 @@ export default function Atendimento() {
       )}
 
       {/* ── Column 2: Chat window ── */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
         {selectedChat ? (
           <>
             {/* Chat topbar */}
-            <div className="h-13 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.02] backdrop-blur-sm shrink-0">
+            <div className="h-13 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06] bg-background z-10 shrink-0 relative">
               <div className="flex items-center gap-2 min-w-0">
                 {isMobile && (
                   <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setLeftDrawerOpen(true)}>
@@ -585,7 +585,7 @@ export default function Atendimento() {
             </div>
 
             {/* Input bar */}
-            <div className="p-3 border-t border-white/[0.06] bg-white/[0.02] backdrop-blur-sm shrink-0">
+            <div className="p-3 border-t border-white/[0.06] bg-background z-10 shrink-0 relative">
               <div className="flex items-center gap-2 max-w-3xl mx-auto">
                 <AudioRecorder onSend={handleAudioSend} disabled={sending} />
                 <Input
