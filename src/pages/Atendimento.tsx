@@ -495,11 +495,11 @@ export default function Atendimento() {
       )}
 
       {/* ── Column 2: Chat window ── */}
-      <div className="flex-1 relative flex flex-col h-full overflow-hidden border-x border-border/50">
+      <div className="h-full grid grid-rows-[auto_1fr_auto] overflow-hidden border-x border-border/50">
         {selectedChat ? (
           <>
             {/* Chat topbar */}
-            <div className="h-13 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06] flex-none bg-background z-20">
+            <div className="h-13 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06] bg-background z-20">
               <div className="flex items-center gap-2 min-w-0">
                 {isMobile && (
                   <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setLeftDrawerOpen(true)}>
@@ -545,9 +545,8 @@ export default function Atendimento() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 relative bg-background/30 w-full">
-              <div className="absolute inset-0 overflow-y-auto p-4">
-                <div className="space-y-3 max-w-3xl mx-auto w-full">
+            <div className="overflow-y-auto relative p-4">
+              <div className="space-y-3 max-w-3xl mx-auto w-full">
                 {mensagens.map((msg) => {
                   const outgoing = isOutgoing(msg);
                   return (
@@ -582,12 +581,11 @@ export default function Atendimento() {
                   );
                 })}
                 <div ref={messagesEndRef} />
-                </div>
               </div>
             </div>
 
             {/* Input bar */}
-            <div className="p-3 border-t border-white/[0.06] flex-none bg-background z-20">
+            <div className="p-3 border-t border-white/[0.06] bg-background z-20">
               <div className="flex items-center gap-2 max-w-3xl mx-auto">
                 <AudioRecorder onSend={handleAudioSend} disabled={sending} />
                 <Input
