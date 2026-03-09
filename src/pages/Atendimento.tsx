@@ -359,7 +359,7 @@ export default function Atendimento() {
             
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <div className="flex items-center justify-between gap-1">
-                <span className="text-sm font-semibold text-foreground truncate pr-2">
+                <span className="text-sm font-semibold text-foreground truncate pr-4">
                   {chat.nome_contato || formatPhone(chat.whatsapp_numero)}
                 </span>
                 {chat.lastTime && (
@@ -369,7 +369,7 @@ export default function Atendimento() {
                 )}
               </div>
               
-              <div className="flex items-center justify-between mt-0.5 gap-2">
+              <div className="flex items-center justify-between mt-0.5 gap-4 pr-6">
                 <div className="min-w-0 flex-1">
                   <p className="truncate block w-full text-sm text-muted-foreground">
                     {chat.lastMessageType === "audio" ? "🎵 Áudio" : chat.lastMessage}
