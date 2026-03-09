@@ -540,7 +540,7 @@ export default function Atendimento() {
   );
 
   return (
-    <div className="h-full flex overflow-hidden">
+    <div className="flex flex-col md:flex-row h-full w-full overflow-hidden">
       {/* ── Column 1: Chat list ── */}
       {isMobile ? (
         <Sheet open={leftDrawerOpen} onOpenChange={setLeftDrawerOpen}>
@@ -552,13 +552,13 @@ export default function Atendimento() {
           </SheetContent>
         </Sheet>
       ) : (
-        <div className="w-[320px] flex-shrink-0 flex flex-col h-full border-r border-white/[0.06] bg-white/[0.02] backdrop-blur-sm hidden md:flex overflow-hidden">
+        <div className="w-full md:w-[320px] flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-border/50 min-h-0 bg-white/[0.02] backdrop-blur-sm hidden md:flex overflow-hidden">
           {chatListContent}
         </div>
       )}
 
       {/* ── Column 2: Chat window ── */}
-      <div className="flex flex-col flex-1 h-full overflow-hidden border-x border-border/50 relative min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
         {selectedChat ? (
           <>
             {/* Chat topbar */}
@@ -690,7 +690,7 @@ export default function Atendimento() {
 
       {/* ── Column 3: Lead control panel (desktop only) ── */}
       {!isMobile && (
-        <div className="w-[300px] flex-shrink-0 flex flex-col h-full border-l border-white/[0.06] p-4 gap-4 overflow-y-auto bg-white/[0.02] backdrop-blur-sm">
+        <div className="hidden xl:flex w-[300px] flex-shrink-0 flex flex-col border-l border-border/50 min-h-0 p-4 gap-4 overflow-y-auto bg-white/[0.02] backdrop-blur-sm">
           {rightPanelContent}
         </div>
       )}

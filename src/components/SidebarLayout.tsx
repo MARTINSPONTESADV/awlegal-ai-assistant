@@ -12,7 +12,7 @@ export function SidebarLayout() {
   return (
     <SidebarProvider>
       {/* Full-screen deep space canvas */}
-      <div className="h-screen w-full flex overflow-hidden bg-background">
+      <div className="flex h-full w-full overflow-hidden bg-background">
         {/* Ambient light orbs in background */}
         <div className="mesh-blob mesh-blob-1 pointer-events-none" />
         <div className="mesh-blob mesh-blob-2 pointer-events-none" />
@@ -44,7 +44,7 @@ export function SidebarLayout() {
           </header>
 
           {/* Page content */}
-          <main className="flex-1 h-full overflow-y-auto overflow-x-hidden">
+          <main className="flex-1 h-full overflow-y-auto overflow-x-hidden relative">
             <div className="max-w-[1400px] h-full mx-auto px-4 md:px-8 py-6 animate-fade-in relative min-h-0 min-w-0">
               <Outlet />
             </div>
