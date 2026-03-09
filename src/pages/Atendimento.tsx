@@ -143,6 +143,44 @@ export default function Atendimento() {
     }
   }, [mensagens]);
 
+  // ── Realtime GLOBAL: atualiza lastTime/lastMessage/unread_count de QUALQUER contato ──
+  // Isso faz o contato "pular para o topo" ao receber nova mensagem (padrão WhatsApp)
+  useEffect(() => {
+    const globalChannel = supabase
+      .channel("todas-mensagens-realtime")
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "historico_mensagens",
+      }, (payload) => {
+        const nova = payload.new as any;
+        const remetente = nova.whatsapp_id;
+        if (!remetente) return;
+
+        setChats((prev) =>
+          prev.map((c) => {
+            if (c.whatsapp_numero !== remetente) return c;
+            // Determina se é mensagem de entrada (do cliente) para incrementar unread
+            const isIncoming = nova.direcao === "entrada" || nova.origem === "cliente";
+            return {
+              ...c,
+              lastMessage: nova.conteudo || c.lastMessage,
+              lastMessageType: nova.tipo_midia || "texto",
+              lastTime: nova.created_at || c.lastTime,
+              // Só incrementa badge se o chat NÃO está selecionado E é mensagem incoming
+              unread_count: (isIncoming && selectedChat !== remetente)
+                ? (c.unread_count || 0) + 1
+                : c.unread_count,
+            };
+          })
+        );
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(globalChannel); };
+  // selectedChat no dep array para o badge só incrementar para chats não ativos
+  }, [selectedChat]);
+
   const currentChat = chats.find((c) => c.whatsapp_numero === selectedChat);
 
   useEffect(() => {
@@ -282,8 +320,26 @@ export default function Atendimento() {
     return origem === "bot" || origem === "advogado";
   };
 
+  // ── Marca mensagens como lidas ao selecionar o contato ──
+  const markAsRead = async (numero: string) => {
+    // Zera no banco (coluna unread_count na tabela controle_bot)
+    supabase
+      .from("controle_bot")
+      .update({ unread_count: 0 } as any)
+      .eq("whatsapp_numero", numero)
+      .then(() => {}); // fire-and-forget, não bloqueia a UI
+
+    // Zera instantaneamente no estado local (Optimistic UI)
+    setChats((prev) =>
+      prev.map((c) =>
+        c.whatsapp_numero === numero ? { ...c, unread_count: 0 } : c
+      )
+    );
+  };
+
   const handleSelectChat = (numero: string) => {
     setSelectedChat(numero);
+    markAsRead(numero);
     if (isMobile) setLeftDrawerOpen(false);
   };
 
