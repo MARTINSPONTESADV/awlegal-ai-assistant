@@ -477,7 +477,7 @@ export default function Atendimento() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] gap-0 -mx-4 md:-mx-8 -my-6 overflow-hidden relative">
+    <div className="h-full flex overflow-hidden">
       {/* ── Column 1: Chat list ── */}
       {isMobile ? (
         <Sheet open={leftDrawerOpen} onOpenChange={setLeftDrawerOpen}>
@@ -495,7 +495,7 @@ export default function Atendimento() {
       )}
 
       {/* ── Column 2: Chat window ── */}
-      <div className="h-full grid grid-rows-[auto_1fr_auto] overflow-hidden border-x border-border/50">
+      <div className="flex flex-col flex-1 h-full overflow-hidden border-x border-border/50">
         {selectedChat ? (
           <>
             {/* Chat topbar */}
@@ -545,7 +545,7 @@ export default function Atendimento() {
             </div>
 
             {/* Messages */}
-            <div className="overflow-y-auto relative p-4">
+            <div className="flex-1 overflow-y-auto p-4 min-h-0 bg-background/30 w-full relative">
               <div className="space-y-3 max-w-3xl mx-auto w-full">
                 {mensagens.map((msg) => {
                   const outgoing = isOutgoing(msg);
