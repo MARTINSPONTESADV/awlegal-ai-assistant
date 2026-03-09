@@ -72,7 +72,8 @@ export default function Publicacoes() {
   });
 
   const totalCount = allPublicacoes.length;
-  const naoLidasCount = allPublicacoes.filter((p: any) => p.status_leitura === 'Não lida' || !p.status_leitura).length;
+  // Lógica de exclusão absoluta: tudo que NÃO for 'Lida' é tratado como não lida
+  const naoLidasCount = allPublicacoes.filter((p: any) => p.status_leitura !== 'Lida').length;
   const lidasCount = allPublicacoes.filter((p: any) => p.status_leitura === 'Lida').length;
 
   // ── Main filtered query ──
@@ -88,7 +89,8 @@ export default function Publicacoes() {
       if (f.orgao) query = query.ilike("orgao", `%${f.orgao}%`);
       if (f.statusLeitura === "lidas") query = query.eq("status_leitura", "Lida");
       else if (f.statusLeitura === "nao_lidas") {
-        query = query.or("status_leitura.eq.Não lida,status_leitura.is.null,status_leitura.eq.");
+        // Exclusão absoluta: tudo que NÃO for Lida (inclui NULL, vazio, 'Não lida', strings legadas)
+        query = query.neq("status_leitura", "Lida");
       }
       const { data, error } = await query;
       if (error) throw error;
