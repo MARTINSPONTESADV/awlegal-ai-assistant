@@ -359,26 +359,9 @@ export default function Atendimento() {
             
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1 min-w-0 flex-1">
-                  <span className="text-sm font-semibold text-foreground truncate">
-                    {chat.nome_contato || formatPhone(chat.whatsapp_numero)}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground opacity-50 hover:opacity-100"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      const novoStatus = !(chat.arquivado || false);
-                      await supabase.from("controle_bot").update({ arquivado: novoStatus } as any).eq("whatsapp_numero", chat.whatsapp_numero);
-                      setChats(prev => prev.map(c => c.whatsapp_numero === chat.whatsapp_numero ? { ...c, arquivado: novoStatus } : c));
-                      if (selectedChat === chat.whatsapp_numero && novoStatus) setSelectedChat(null);
-                      toast({ title: novoStatus ? "Conversa arquivada" : "Conversa retornada das arquivadas" });
-                    }}
-                  >
-                    {chat.arquivado ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-                  </Button>
-                </div>
+                <span className="text-sm font-semibold text-foreground truncate pr-2">
+                  {chat.nome_contato || formatPhone(chat.whatsapp_numero)}
+                </span>
                 {chat.lastTime && (
                   <span className={cn("text-[10px] shrink-0 font-medium", chat.unread_count ? "text-emerald-400" : "text-muted-foreground")}>
                     {format(new Date(chat.lastTime), "HH:mm")}
@@ -476,21 +459,41 @@ export default function Atendimento() {
         </Badge>
       </div>
 
-      <Button
-        onClick={toggleBot}
-        disabled={loadingBot}
-        variant={currentChat.bot_ativo ? "destructive" : "default"}
-        className={cn(
-          "w-full font-bold text-sm py-5",
-          !currentChat.bot_ativo && "bg-violet-600 hover:bg-violet-700"
-        )}
-      >
-        {currentChat.bot_ativo ? (
-          <><BotOff className="h-4 w-4 mr-2" /> TRAVAR ROBÔ</>
-        ) : (
-          <><Bot className="h-4 w-4 mr-2" /> REATIVAR ROBÔ</>
-        )}
-      </Button>
+      <div className="space-y-2">
+        <Button
+          onClick={toggleBot}
+          disabled={loadingBot}
+          variant={currentChat.bot_ativo ? "destructive" : "default"}
+          className={cn(
+            "w-full font-bold text-sm py-5",
+            !currentChat.bot_ativo && "bg-violet-600 hover:bg-violet-700"
+          )}
+        >
+          {currentChat.bot_ativo ? (
+            <><BotOff className="h-4 w-4 mr-2" /> TRAVAR ROBÔ</>
+          ) : (
+            <><Bot className="h-4 w-4 mr-2" /> REATIVAR ROBÔ</>
+          )}
+        </Button>
+
+        <Button
+          variant="outline"
+          className="w-full border-white/[0.08] hover:bg-white/[0.05] text-muted-foreground hover:text-foreground"
+          onClick={async () => {
+            const novoStatus = !(currentChat.arquivado || false);
+            await supabase.from("controle_bot").update({ arquivado: novoStatus } as any).eq("whatsapp_numero", selectedChat);
+            setChats(prev => prev.map(c => c.whatsapp_numero === selectedChat ? { ...c, arquivado: novoStatus } : c));
+            if (novoStatus) setSelectedChat(null);
+            toast({ title: novoStatus ? "Conversa arquivada" : "Conversa retornada das arquivadas" });
+          }}
+        >
+          {currentChat.arquivado ? (
+            <><ArchiveRestore className="h-4 w-4 mr-2" /> Desarquivar Conversa</>
+          ) : (
+            <><Archive className="h-4 w-4 mr-2" /> Arquivar Conversa</>
+          )}
+        </Button>
+      </div>
 
       <div className="border-t border-white/[0.06] pt-4 space-y-3">
         <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Informações</h4>
@@ -549,13 +552,13 @@ export default function Atendimento() {
           </SheetContent>
         </Sheet>
       ) : (
-        <div className="w-72 shrink-0 border-r border-white/[0.06] flex flex-col bg-white/[0.02] backdrop-blur-sm h-full hidden md:flex overflow-hidden">
+        <div className="w-[320px] flex-shrink-0 flex flex-col h-full border-r border-white/[0.06] bg-white/[0.02] backdrop-blur-sm hidden md:flex overflow-hidden">
           {chatListContent}
         </div>
       )}
 
       {/* ── Column 2: Chat window ── */}
-      <div className="flex flex-col flex-1 h-full overflow-hidden border-x border-border/50 min-h-0 min-w-0">
+      <div className="flex flex-col flex-1 h-full overflow-hidden border-x border-border/50 relative min-w-0">
         {selectedChat ? (
           <>
             {/* Chat topbar */}
@@ -687,7 +690,7 @@ export default function Atendimento() {
 
       {/* ── Column 3: Lead control panel (desktop only) ── */}
       {!isMobile && (
-        <div className="w-68 shrink-0 border-l border-white/[0.06] flex flex-col p-4 gap-4 overflow-y-auto bg-white/[0.02] backdrop-blur-sm h-full min-h-0">
+        <div className="w-[300px] flex-shrink-0 flex flex-col h-full border-l border-white/[0.06] p-4 gap-4 overflow-y-auto bg-white/[0.02] backdrop-blur-sm">
           {rightPanelContent}
         </div>
       )}
