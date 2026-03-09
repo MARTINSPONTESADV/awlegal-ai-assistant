@@ -72,10 +72,8 @@ export default function Publicacoes() {
   });
 
   const totalCount = allPublicacoes.length;
-  const naoLidasCount = allPublicacoes.filter((p: any) =>
-    !p.status_leitura || p.status_leitura === "Não lida" || p.status_leitura === null
-  ).length;
-  const lidasCount = allPublicacoes.filter((p: any) => p.status_leitura === "Lida").length;
+  const naoLidasCount = allPublicacoes.filter((p: any) => p.status_leitura === 'Não lida' || !p.status_leitura).length;
+  const lidasCount = allPublicacoes.filter((p: any) => p.status_leitura === 'Lida').length;
 
   // ── Main filtered query ──
   const { data: publicacoes = [], isLoading } = useQuery({
