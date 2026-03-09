@@ -44,7 +44,7 @@ export function SidebarLayout() {
           </header>
 
           {/* Page content */}
-          <main className="flex-1 h-full overflow-hidden relative min-h-0 min-w-0">
+          <main className="flex-1 h-full overflow-y-auto overflow-x-hidden">
             <div className="max-w-[1400px] h-full mx-auto px-4 md:px-8 py-6 animate-fade-in relative min-h-0 min-w-0">
               <Outlet />
             </div>
