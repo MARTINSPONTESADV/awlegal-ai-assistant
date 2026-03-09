@@ -130,9 +130,9 @@ export function AppSidebar() {
           <Scale className="h-4 w-4 text-violet-400" />
         </div>
         {!collapsed && (
-          <div className="flex flex-col leading-tight">
-            <span className="font-bold text-sm tracking-wide text-foreground">AW LEGAL</span>
-            <span className="text-[9px] text-cyan-400/70 uppercase tracking-widest font-mono">Legaltech</span>
+          <div className="flex flex-col justify-center">
+            <span className="font-bold text-sm tracking-tight text-foreground leading-none">AW LEGAL</span>
+            <span className="text-[9px] text-cyan-400/70 uppercase tracking-[0.15em] font-mono leading-none mt-1">Legaltech</span>
           </div>
         )}
       </div>
