@@ -88,7 +88,7 @@ export default function Publicacoes() {
       if (f.orgao) query = query.ilike("orgao", `%${f.orgao}%`);
       if (f.statusLeitura === "lidas") query = query.eq("status_leitura", "Lida");
       else if (f.statusLeitura === "nao_lidas") {
-        query = query.or("status_leitura.eq.Não lida,status_leitura.is.null");
+        query = query.or("status_leitura.eq.Não lida,status_leitura.is.null,status_leitura.eq.");
       }
       const { data, error } = await query;
       if (error) throw error;
