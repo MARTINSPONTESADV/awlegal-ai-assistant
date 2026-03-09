@@ -117,12 +117,18 @@ export default function Atendimento() {
     const channel = supabase
       .channel(`chat-${selectedChat}`)
       .on("postgres_changes", {
-        event: "INSERT",
+        event: "*", // Listen to INSERT, UPDATE, DELETE
         schema: "public",
         table: "historico_mensagens",
         filter: `whatsapp_id=eq.${selectedChat}`,
       }, (payload) => {
-        setMensagens((prev) => [...prev, payload.new as Mensagem]);
+        if (payload.eventType === "INSERT") {
+          setMensagens((prev) => [...prev, payload.new as Mensagem]);
+        } else if (payload.eventType === "UPDATE") {
+          setMensagens((prev) => prev.map(m => m.id === payload.new.id ? (payload.new as Mensagem) : m));
+        } else if (payload.eventType === "DELETE") {
+          setMensagens((prev) => prev.filter(m => m.id !== payload.old.id));
+        }
       })
       .subscribe();
 
@@ -168,21 +174,30 @@ export default function Atendimento() {
         .eq("whatsapp_numero", selectedChat)
         .maybeSingle();
 
-      let newVal: boolean;
-      if (!existing) {
-        newVal = false;
-        await supabase.from("controle_bot").insert({ whatsapp_numero: selectedChat, bot_ativo: newVal } as any);
-      } else {
-        newVal = !existing.bot_ativo;
-        const { error } = await supabase.from("controle_bot").update({ bot_ativo: newVal }).eq("whatsapp_numero", selectedChat);
-        if (error) throw error;
-      }
-
+      const newVal = !currentChat.bot_ativo;
+      
+      // Optimistic Update
       setChats((prev) =>
         prev.map((c) =>
           c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: newVal } : c
         )
       );
+
+      const { error } = await supabase
+        .from("controle_bot")
+        .update({ bot_ativo: newVal })
+        .eq("whatsapp_numero", selectedChat);
+
+      if (error) {
+        // Rollback on error
+        setChats((prev) =>
+          prev.map((c) =>
+            c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: !newVal } : c
+          )
+        );
+        throw error;
+      }
+
       toast({
         title: newVal ? "Robô Ativado" : "Robô Pausado — Humano Assumiu",
         description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
