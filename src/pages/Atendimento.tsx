@@ -166,46 +166,36 @@ export default function Atendimento() {
 
   const toggleBot = async () => {
     if (!currentChat || !selectedChat) return;
-    setLoadingBot(true);
+
+    // ── Optimistic UI: atualiza o estado ANTES de chamar o Supabase ──
+    const previousVal = currentChat.bot_ativo;
+    const newVal = !previousVal;
+    setChats((prev) =>
+      prev.map((c) =>
+        c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: newVal } : c
+      )
+    );
+
     try {
-      const { data: existing } = await supabase
-        .from("controle_bot")
-        .select("bot_ativo")
-        .eq("whatsapp_numero", selectedChat)
-        .maybeSingle();
-
-      const newVal = !currentChat.bot_ativo;
-      
-      // Optimistic Update
-      setChats((prev) =>
-        prev.map((c) =>
-          c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: newVal } : c
-        )
-      );
-
       const { error } = await supabase
         .from("controle_bot")
         .update({ bot_ativo: newVal })
         .eq("whatsapp_numero", selectedChat);
 
-      if (error) {
-        // Rollback on error
-        setChats((prev) =>
-          prev.map((c) =>
-            c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: !newVal } : c
-          )
-        );
-        throw error;
-      }
+      if (error) throw error;
 
       toast({
         title: newVal ? "Robô Ativado" : "Robô Pausado — Humano Assumiu",
         description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
       });
-    } catch (err) {
+    } catch {
+      // ── Rollback: reverte o estado para o valor original ──
+      setChats((prev) =>
+        prev.map((c) =>
+          c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: previousVal } : c
+        )
+      );
       toast({ title: "Erro ao alterar status do robô", variant: "destructive" });
-    } finally {
-      setLoadingBot(false);
     }
   };
 
