@@ -26,7 +26,7 @@ export function SidebarLayout() {
         </div>
 
         {/* Main content column */}
-        <div className="flex-1 flex flex-col min-w-0 z-10">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 z-10">
           {/* Glassy topbar header */}
           <header className="h-14 flex items-center justify-between px-4 shrink-0 sticky top-0 z-30
             glass-card border-b border-white/[0.06] backdrop-blur-xl">
@@ -44,8 +44,8 @@ export function SidebarLayout() {
           </header>
 
           {/* Page content */}
-          <main className="flex-1 h-full overflow-hidden relative">
-            <div className="max-w-[1400px] h-full mx-auto px-4 md:px-8 py-6 animate-fade-in relative">
+          <main className="flex-1 h-full overflow-hidden relative min-h-0 min-w-0">
+            <div className="max-w-[1400px] h-full mx-auto px-4 md:px-8 py-6 animate-fade-in relative min-h-0 min-w-0">
               <Outlet />
             </div>
           </main>
