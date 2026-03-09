@@ -15,6 +15,7 @@ import {
 import {
   Bot, BotOff, Send, Phone, User, Circle,
   Search, Briefcase, Menu, Info, Pencil, Check, X, Building2, Zap,
+  Archive, ArchiveRestore
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -35,7 +36,10 @@ interface Chat {
   canal?: string | null;
   lastMessage?: string;
   lastMessageType?: string;
+  lastMessageType?: string;
   lastTime?: string;
+  unread_count?: number;
+  arquivado?: boolean;
 }
 
 interface Mensagem {
@@ -63,6 +67,7 @@ export default function Atendimento() {
   const [editingName, setEditingName] = useState(false);
   const [contactName, setContactName] = useState("");
   const [canal, setCanal] = useState<Canal>("resolva_ja");
+  const [showArchived, setShowArchived] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -86,6 +91,8 @@ export default function Atendimento() {
               lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
               lastMessageType: msgs?.[0]?.tipo_midia || "texto",
               lastTime: msgs?.[0]?.created_at || undefined,
+              unread_count: (c as any).unread_count || 0,
+              arquivado: (c as any).arquivado || false,
             };
           })
         );
@@ -238,15 +245,22 @@ export default function Atendimento() {
     }
   };
 
-  const filteredChats = chats.filter((c) => {
-    const matchSearch = c.whatsapp_numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.nome_contato || "").toLowerCase().includes(searchTerm.toLowerCase());
-    // Canal filter: if canal field exists use it, otherwise "resolva_ja" shows all (legacy), "martins_pontes" shows marked ones
-    const matchCanal = canal === "resolva_ja"
-      ? !c.canal || c.canal === "resolva_ja"
-      : c.canal === "martins_pontes";
-    return matchSearch && matchCanal;
-  });
+  const filteredChats = chats
+    .filter((c) => {
+      const matchSearch = c.whatsapp_numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.nome_contato || "").toLowerCase().includes(searchTerm.toLowerCase());
+      // Canal filter: if canal field exists use it, otherwise "resolva_ja" shows all (legacy), "martins_pontes" shows marked ones
+      const matchCanal = canal === "resolva_ja"
+        ? !c.canal || c.canal === "resolva_ja"
+        : c.canal === "martins_pontes";
+      const matchArchive = (c.arquivado || false) === showArchived;
+      return matchSearch && matchCanal && matchArchive;
+    })
+    .sort((a, b) => {
+      const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
+      const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
+      return timeB - timeA;
+    });
 
   const formatPhone = (id: string) => {
     if (id.length === 13) return `+${id.slice(0, 2)} (${id.slice(2, 4)}) ${id.slice(4, 5)} ${id.slice(5, 9)}-${id.slice(9)}`;
@@ -298,8 +312,22 @@ export default function Atendimento() {
   // ── Chat list ──
   const chatListContent = (
     <>
-      {/* Canal selector inside list */}
-      <div className="px-3 pt-3 pb-2">{canalSelector}</div>
+      {/* Canal selector inside list and Archive Button */}
+      <div className="px-3 pt-3 pb-2 flex items-center justify-between gap-2">
+        <div className="flex-1 overflow-x-auto">
+          {canalSelector}
+        </div>
+        <Button 
+          variant={showArchived ? "secondary" : "default"} 
+          size="icon" 
+          className={cn("h-8 w-8 shrink-0 relative transition-all", !showArchived && "bg-white/[0.04] text-muted-foreground hover:text-foreground hover:bg-white/[0.08]")}
+          onClick={() => setShowArchived(!showArchived)}
+          title={showArchived ? "Ver conversas ativas" : "Ver conversas arquivadas"}
+        >
+          <Archive className="h-4 w-4" />
+          {showArchived && <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-violet-400" />}
+        </Button>
+      </div>
       <div className="px-3 pb-2">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -317,42 +345,78 @@ export default function Atendimento() {
             key={chat.whatsapp_numero}
             onClick={() => handleSelectChat(chat.whatsapp_numero)}
             className={cn(
-              "w-full flex items-start gap-3 px-3 py-3 text-left transition-all border-b border-white/[0.04] hover:bg-white/[0.05]",
+              "group relative w-full flex items-start gap-3 px-3 py-3 text-left transition-all border-b border-white/[0.04] hover:bg-white/[0.05]",
               selectedChat === chat.whatsapp_numero && "bg-violet-500/10 border-l-2 border-l-violet-400"
             )}
           >
-            <div className="relative shrink-0">
-              <div className="h-9 w-9 rounded-full bg-violet-500/15 ring-1 ring-violet-400/20 flex items-center justify-center">
-                <Phone className="h-3.5 w-3.5 text-violet-400" />
+            <div className="relative shrink-0 pt-0.5">
+              <div className="h-10 w-10 rounded-full bg-violet-500/15 ring-1 ring-violet-400/20 flex items-center justify-center">
+                <Phone className="h-4 w-4 text-violet-400" />
               </div>
               {chat.bot_ativo && (
-                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-background" />
+                <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-background" />
               )}
             </div>
-            <div className="flex-1 min-w-0">
+            
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
               <div className="flex items-center justify-between gap-1">
-                <span className="text-sm font-medium text-foreground truncate">
+                <span className="text-sm font-semibold text-foreground truncate pr-2">
                   {chat.nome_contato || formatPhone(chat.whatsapp_numero)}
                 </span>
                 {chat.lastTime && (
-                  <span className="text-[10px] text-muted-foreground shrink-0">
+                  <span className={cn("text-[10px] shrink-0 font-medium", chat.unread_count ? "text-emerald-400" : "text-muted-foreground")}>
                     {format(new Date(chat.lastTime), "HH:mm")}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                {chat.lastMessageType === "audio" ? "🎵 Áudio" : chat.lastMessage}
-              </p>
-              <div className="flex items-center gap-1 mt-1">
-                {chat.bot_ativo ? (
-                  <Bot className="h-3 w-3 text-violet-400" />
-                ) : (
-                  <User className="h-3 w-3 text-amber-400" />
-                )}
-                <span className="text-[10px] text-muted-foreground">
-                  {chat.bot_ativo ? "Bot ativo" : "Humano"}
-                </span>
+              
+              <div className="flex items-center justify-between mt-0.5 gap-2">
+                <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                  <p className="text-[13px] text-muted-foreground truncate whitespace-nowrap text-ellipsis min-w-0 flex-1">
+                    {chat.lastMessageType === "audio" ? "🎵 Áudio" : chat.lastMessage}
+                  </p>
+                </div>
+                
+                {/* Unread Badge */}
+                {chat.unread_count && chat.unread_count > 0 ? (
+                  <div className="bg-emerald-500 text-white rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm">
+                    {chat.unread_count}
+                  </div>
+                ) : null}
               </div>
+              
+              <div className="flex items-center justify-between gap-1 mt-1.5 opacity-80">
+                <div className="flex items-center gap-1">
+                  {chat.bot_ativo ? (
+                    <Bot className="h-3.5 w-3.5 text-violet-400" />
+                  ) : (
+                    <User className="h-3.5 w-3.5 text-amber-400" />
+                  )}
+                  <span className="text-[11px] text-muted-foreground/90 font-medium tracking-tight">
+                    {chat.bot_ativo ? "Bot ativo" : "Humano"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Archive quick action (visible on hover) */}
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/90 p-1 rounded-md shadow-sm border border-border backdrop-blur-md">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 hover:bg-white/[0.1] text-muted-foreground hover:text-foreground"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const novoStatus = !(chat.arquivado || false);
+                  await supabase.from("controle_bot").update({ arquivado: novoStatus } as any).eq("whatsapp_numero", chat.whatsapp_numero);
+                  setChats(prev => prev.map(c => c.whatsapp_numero === chat.whatsapp_numero ? { ...c, arquivado: novoStatus } : c));
+                  if (selectedChat === chat.whatsapp_numero && novoStatus) setSelectedChat(null);
+                  toast({ title: novoStatus ? "Conversa arquivada" : "Conversa retornada das arquivadas" });
+                }}
+                title={chat.arquivado ? "Desarquivar" : "Arquivar"}
+              >
+                {chat.arquivado ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+              </Button>
             </div>
           </button>
         ))}
