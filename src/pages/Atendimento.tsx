@@ -545,7 +545,7 @@ export default function Atendimento() {
   );
 
   return (
-    <div className="flex flex-col md:flex-row h-full w-full overflow-hidden">
+    <div className="h-full w-full overflow-hidden flex flex-col md:flex-row min-w-0 min-h-0">
       {/* ── Column 1: Chat list ── */}
       {isMobile ? (
         <Sheet open={leftDrawerOpen} onOpenChange={setLeftDrawerOpen}>
