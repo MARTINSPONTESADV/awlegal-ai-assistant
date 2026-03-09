@@ -73,7 +73,7 @@ export default function Publicacoes() {
 
   const totalCount = allPublicacoes.length;
   const naoLidasCount = allPublicacoes.filter((p: any) =>
-    !p.status_leitura || p.status_leitura === "Não lida"
+    !p.status_leitura || p.status_leitura === "Não lida" || p.status_leitura === null
   ).length;
   const lidasCount = allPublicacoes.filter((p: any) => p.status_leitura === "Lida").length;
 
@@ -89,7 +89,9 @@ export default function Publicacoes() {
       if (f.numProcesso) query = query.ilike("numero_processo", `%${f.numProcesso}%`);
       if (f.orgao) query = query.ilike("orgao", `%${f.orgao}%`);
       if (f.statusLeitura === "lidas") query = query.eq("status_leitura", "Lida");
-      else if (f.statusLeitura === "nao_lidas") query = query.eq("status_leitura", "Não lida");
+      else if (f.statusLeitura === "nao_lidas") {
+        query = query.or("status_leitura.eq.Não lida,status_leitura.is.null");
+      }
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
