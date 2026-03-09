@@ -26,9 +26,9 @@ export function SidebarLayout() {
         </div>
 
         {/* Main content column */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 z-10">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 z-10 overflow-hidden">
           {/* Glassy topbar header */}
-          <header className="h-14 flex items-center justify-between px-4 shrink-0 sticky top-0 z-30
+          <header className="h-14 flex items-center justify-between px-4 shrink-0 z-30
             glass-card border-b border-white/[0.06] backdrop-blur-xl">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors" />
@@ -43,11 +43,10 @@ export function SidebarLayout() {
             </div>
           </header>
 
-          {/* Page content – each page controls its own scroll strategy */}
+          {/* Page content – overflow-y-auto for normal pages (Dashboard, Financeiro, etc.)
+              relative allows Atendimento to position absolute and escape the scroll. */}
           <main className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
-            {/* Scrollable wrapper: pages that need scroll get it here.
-                Pages like Atendimento that use h-full overflow-hidden will ignore this scroll. */}
-            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
+            <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
               <Outlet />
             </div>
           </main>

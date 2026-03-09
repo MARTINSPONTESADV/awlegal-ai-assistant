@@ -68,6 +68,7 @@ export default function Atendimento() {
   const [canal, setCanal] = useState<Canal>("resolva_ja");
   const [showArchived, setShowArchived] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -136,7 +137,10 @@ export default function Atendimento() {
   }, [selectedChat]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Scroll APENAS dentro do container do chat, nunca no documento global
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
   }, [mensagens]);
 
   const currentChat = chats.find((c) => c.whatsapp_numero === selectedChat);
@@ -613,7 +617,7 @@ export default function Atendimento() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 min-h-0 min-w-0 bg-background/30 w-full relative">
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 min-h-0 min-w-0 bg-background/30 w-full relative">
               <div className="space-y-3 max-w-3xl mx-auto w-full">
                 {mensagens.map((msg) => {
                   const outgoing = isOutgoing(msg);
