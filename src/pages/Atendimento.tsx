@@ -436,7 +436,7 @@ export default function Atendimento() {
               
               <div className="flex items-center justify-between mt-0.5 gap-4 pr-6">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate block w-full text-sm text-muted-foreground">
+                  <p className="truncate block w-full text-sm pr-4 text-muted-foreground">
                     {chat.lastMessageType === "audio" ? "🎵 Áudio" : chat.lastMessage}
                   </p>
                 </div>
