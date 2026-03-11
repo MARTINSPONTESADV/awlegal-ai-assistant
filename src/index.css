@@ -1,3 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Lato:wght@300;400;700;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 html, body, #root {
   height: 100dvh;
   width: 100vw;
@@ -6,111 +12,36 @@ html, body, #root {
   padding: 0;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 @layer base {
   :root {
-    /* ── Deep space background ── */
-    --background: 222 47% 5%;
-    --foreground: 210 40% 96%;
-
-    /* ── Glass card surface ── */
-    --card: 220 40% 8%;
-    --card-foreground: 210 40% 96%;
-
-    /* ── Popover / dropdown ── */
-    --popover: 222 44% 7%;
-    --popover-foreground: 210 40% 96%;
-
-    /* ── Primary: electric violet ── */
+    --background: 222 47% 4%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 6%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 7%;
+    --popover-foreground: 210 40% 98%;
     --primary: 270 100% 62%;
     --primary-foreground: 0 0% 100%;
-
-    /* ── Secondary: slate glass ── */
-    --secondary: 220 30% 14%;
-    --secondary-foreground: 210 25% 70%;
-
-    /* ── Muted ── */
-    --muted: 220 30% 12%;
-    --muted-foreground: 220 15% 55%;
-
-    /* ── Accent: cyan neon ── */
-    --accent: 190 100% 42%;
+    --secondary: 222 47% 10%;
+    --secondary-foreground: 210 30% 80%;
+    --muted: 222 47% 9%;
+    --muted-foreground: 210 20% 60%;
+    --accent: 190 100% 45%;
     --accent-foreground: 0 0% 100%;
-
-    /* ── Destructive ── */
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-
-    /* ── Borders & inputs ── */
-    --border: 220 30% 16%;
-    --input: 220 30% 14%;
+    --border: 222 47% 12%;
+    --input: 222 47% 10%;
     --ring: 270 100% 62%;
-
     --radius: 0.875rem;
-
-    /* ── Sidebar glass ── */
-    --sidebar-background: 222 47% 4%;
-    --sidebar-foreground: 220 15% 65%;
+    --sidebar-background: 222 47% 3%;
+    --sidebar-foreground: 210 30% 80%;
     --sidebar-primary: 270 100% 62%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 35% 11%;
-    --sidebar-accent-foreground: 210 40% 96%;
-    --sidebar-border: 220 30% 13%;
+    --sidebar-accent: 222 47% 10%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 222 47% 12%;
     --sidebar-ring: 270 100% 62%;
-
-    /* ── Status colors ── */
-    --success: 152 64% 45%;
-    --success-foreground: 0 0% 98%;
-    --warning: 38 92% 52%;
-    --warning-foreground: 0 0% 10%;
-
-    /* ── Neon palette ── */
-    --neon-purple: 270 100% 62%;
-    --neon-cyan: 190 100% 52%;
-    --neon-glow: 270 100% 62%;
-  }
-
-  /* Dark mode mirrors root (already dark-first) */
-  .dark {
-    --background: 222 47% 5%;
-    --foreground: 210 40% 96%;
-    --card: 220 40% 8%;
-    --card-foreground: 210 40% 96%;
-    --popover: 222 44% 7%;
-    --popover-foreground: 210 40% 96%;
-    --primary: 270 100% 62%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 30% 14%;
-    --secondary-foreground: 210 25% 70%;
-    --muted: 220 30% 12%;
-    --muted-foreground: 220 15% 55%;
-    --accent: 190 100% 42%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 62% 30%;
-    --destructive-foreground: 0 0% 95%;
-    --border: 220 30% 16%;
-    --input: 220 30% 14%;
-    --ring: 270 100% 62%;
-    --sidebar-background: 222 47% 4%;
-    --sidebar-foreground: 220 15% 65%;
-    --sidebar-primary: 270 100% 62%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 35% 11%;
-    --sidebar-accent-foreground: 210 40% 96%;
-    --sidebar-border: 220 30% 13%;
-    --sidebar-ring: 270 100% 62%;
-    --success: 152 64% 45%;
-    --success-foreground: 0 0% 98%;
-    --warning: 38 92% 52%;
-    --warning-foreground: 0 0% 10%;
-    --neon-purple: 270 100% 62%;
-    --neon-cyan: 190 100% 52%;
-    --neon-glow: 270 100% 62%;
   }
 }
 
@@ -118,210 +49,27 @@ html, body, #root {
   * {
     @apply border-border;
   }
-
-  html {
-    color-scheme: dark;
-  }
-
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', sans-serif;
-    /* Premium deep-space base with very subtle noise texture */
-    background-color: hsl(222, 47%, 5%);
-    background-image:
-      radial-gradient(ellipse 80% 50% at 20% -10%, hsla(270, 100%, 62%, 0.12) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 40% at 80% 110%, hsla(190, 100%, 52%, 0.08) 0%, transparent 60%);
-    min-height: 100dvh;
+    font-family: 'Lato', 'Inter', sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
-
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Inter', sans-serif;
-    @apply font-semibold;
+    font-family: 'EB Garamond', serif;
   }
 }
 
-/* ─────────────────────────────────────────
-   GLASSMORPHISM UTILITIES
-───────────────────────────────────────── */
-@layer components {
-  /* Frosted glass card */
-  .glass-card {
-    background: rgba(255, 255, 255, 0.035);
-    backdrop-filter: blur(16px) saturate(180%);
-    -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.4),
-      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+@layer utilities {
+  .glass-panel {
+    @apply bg-black/40 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)];
   }
-
-  /* Glass panel – slightly more opaque, for sidebar */
-  .glass-sidebar {
-    background: rgba(10, 12, 26, 0.82);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  .glass-button {
+    @apply relative overflow-hidden bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all duration-300;
   }
-
-  /* Neon-accent border on hover */
-  .glass-card-hover {
-    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
-  }
-  .glass-card-hover:hover {
-    border-color: rgba(139, 92, 246, 0.3);
-    box-shadow:
-      0 8px 40px rgba(0, 0, 0, 0.5),
-      0 0 0 1px rgba(139, 92, 246, 0.2),
-      inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    transform: translateY(-2px);
-  }
-
-  /* KPI / financial value typography */
-  .kpi-value {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
-  }
-
-  /* Neon glow variants */
   .neon-glow-purple {
-    box-shadow: 0 0 14px hsla(270, 100%, 62%, 0.35), 0 0 48px hsla(270, 100%, 62%, 0.12);
+    box-shadow: 0 0 20px hsla(270,100%,62%,0.3), 0 0 60px hsla(270,100%,62%,0.1);
   }
   .neon-glow-cyan {
-    box-shadow: 0 0 14px hsla(190, 100%, 52%, 0.35), 0 0 48px hsla(190, 100%, 52%, 0.1);
+    box-shadow: 0 0 20px hsla(190,100%,45%,0.3), 0 0 60px hsla(190,100%,45%,0.1);
   }
-
-  /* Text glow */
-  .neon-text-purple {
-    text-shadow: 0 0 16px hsla(270, 100%, 62%, 0.6), 0 0 40px hsla(270, 100%, 62%, 0.2);
-  }
-  .neon-text-cyan {
-    text-shadow: 0 0 16px hsla(190, 100%, 52%, 0.6), 0 0 40px hsla(190, 100%, 52%, 0.2);
-  }
-
-  /* Gradient border pill (labels / badges) */
-  .gradient-border {
-    position: relative;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 9999px;
-  }
-  .gradient-border::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, hsla(270,100%,62%,0.5), hsla(190,100%,52%,0.4));
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-  }
-}
-
-/* ─────────────────────────────────────────
-   AMBIENT MESH BLOBS (background orbs)
-───────────────────────────────────────── */
-.mesh-blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(120px);
-  opacity: 1;
-  pointer-events: none;
-  animation: float 28s ease-in-out infinite;
-}
-
-.mesh-blob-1 {
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, hsla(270, 100%, 62%, 0.18) 0%, transparent 70%);
-  top: -15%;
-  left: -8%;
-  animation-delay: 0s;
-}
-
-.mesh-blob-2 {
-  width: 450px;
-  height: 450px;
-  background: radial-gradient(circle, hsla(190, 100%, 52%, 0.12) 0%, transparent 70%);
-  top: 45%;
-  right: -8%;
-  animation-delay: -9s;
-}
-
-.mesh-blob-3 {
-  width: 380px;
-  height: 380px;
-  background: radial-gradient(circle, hsla(260, 80%, 50%, 0.1) 0%, transparent 70%);
-  bottom: -5%;
-  left: 35%;
-  animation-delay: -18s;
-}
-
-@keyframes float {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  25%       { transform: translate(28px, -35px) scale(1.04); }
-  50%       { transform: translate(-18px, 22px) scale(0.96); }
-  75%       { transform: translate(14px, 28px) scale(1.02); }
-}
-
-/* ─────────────────────────────────────────
-   SPOTLIGHT CARD
-───────────────────────────────────────── */
-.spotlight-card {
-  transition: box-shadow 0.3s ease, transform 0.2s ease, border-color 0.3s ease;
-}
-.spotlight-card:hover {
-  box-shadow: 0 0 36px hsla(270, 100%, 62%, 0.08), 0 16px 48px rgba(0,0,0,0.5);
-  transform: translateY(-2px);
-}
-
-/* ─────────────────────────────────────────
-   LEGACY NEON UTILITIES (kept for compat)
-───────────────────────────────────────── */
-.neon-glow {
-  box-shadow: 0 0 12px hsla(270, 100%, 62%, 0.35), 0 0 40px hsla(270, 100%, 62%, 0.12);
-}
-.neon-text-glow {
-  text-shadow: 0 0 12px hsla(270, 100%, 62%, 0.55);
-}
-.neon-line-glow {
-  filter: drop-shadow(0 0 6px hsla(270, 100%, 62%, 0.6));
-}
-
-/* ─────────────────────────────────────────
-   SCROLLBAR
-───────────────────────────────────────── */
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-
-/* Custom thin scrollbar � elegant and discrete */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(80, 80, 100, 0.5);
-  border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(120, 120, 150, 0.75);
-}
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(80, 80, 100, 0.5) transparent;
-}
-/* Reserve gutter so content never hides behind scrollbar */
-.overflow-y-auto {
-  scrollbar-gutter: stable;
 }

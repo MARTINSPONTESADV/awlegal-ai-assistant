@@ -93,7 +93,7 @@ export default function Auth() {
       options: { data: { full_name: name } },
     });
     if (error) toast.error(error.message);
-    else toast.success("Cadastro realizado! Aguarde aprovação do administrador.");
+    else toast.success("Cadastro realizado! Aguarde aprovacao do administrador.");
     setLoading(false);
   };
 
@@ -102,16 +102,17 @@ export default function Auth() {
       <div className="relative z-10 flex w-full flex-col justify-center px-8 py-12 lg:w-[480px] lg:px-16">
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-primary/[0.04] blur-[120px]" />
+          <div className="absolute -bottom-40 -right-40 h-[400px] w-[400px] rounded-full bg-accent/[0.03] blur-[100px]" />
         </div>
 
         <motion.div initial="hidden" animate="show" className="relative z-10 mx-auto w-full max-w-sm">
           <motion.div custom={0} variants={fadeUp} className="mb-12">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary shadow-[0_0_20px_hsla(270,100%,62%,0.4)]">
                 <span className="text-lg font-black text-primary-foreground tracking-tighter">AW</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-foreground">
+                <h1 className="text-xl font-bold tracking-tight text-foreground" style={{fontFamily:'Lato,Inter,sans-serif'}}>
                   AW <span className="text-primary">LEGALTECH</span>
                 </h1>
               </div>
@@ -119,11 +120,11 @@ export default function Auth() {
           </motion.div>
 
           <motion.div custom={1} variants={fadeUp} className="mb-8">
-            <h2 className="text-2xl font-bold text-foreground mb-1">
+            <h2 style={{fontFamily:'EB Garamond,serif', fontSize:'1.9rem', fontWeight:600, lineHeight:1.2, marginBottom:'0.5rem', color:'inherit'}}>
               {isSignup ? "Criar Conta" : "Bem-vindo de volta"}
             </h2>
-            <p className="text-sm text-muted-foreground">
-              {isSignup ? "Preencha seus dados para solicitar acesso" : "Acesse sua plataforma de gestão jurídica"}
+            <p style={{fontFamily:'Lato,Inter,sans-serif'}} className="text-sm text-muted-foreground">
+              {isSignup ? "Preencha seus dados para solicitar acesso" : "Acesse sua plataforma de gestao juridica"}
             </p>
           </motion.div>
 
@@ -152,7 +153,7 @@ export default function Auth() {
               <button
                 type="submit"
                 disabled={loading}
-                className="group relative flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-all duration-300 hover:brightness-110 hover:shadow-[0_0_30px_hsla(270,100%,50%,0.35)] disabled:opacity-50 disabled:pointer-events-none"
+                className="group relative flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-all duration-300 hover:brightness-110 hover:shadow-[0_0_30px_hsla(270,100%,50%,0.4)] disabled:opacity-50 disabled:pointer-events-none"
               >
                 {loading ? (
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
@@ -168,7 +169,7 @@ export default function Auth() {
 
           <motion.div custom={6} variants={fadeUp} className="mt-8 text-center">
             <p className="text-sm text-muted-foreground">
-              {isSignup ? "Já tem uma conta?" : "Não tem uma conta?"}
+              {isSignup ? "Ja tem uma conta?" : "Nao tem uma conta?"}
               <button type="button" onClick={() => setIsSignup(!isSignup)} className="ml-1 font-semibold text-primary hover:text-primary/80 transition-colors">
                 {isSignup ? "Entrar" : "Criar conta"}
               </button>
@@ -184,16 +185,21 @@ export default function Auth() {
       <div className="relative hidden flex-1 overflow-hidden lg:block">
         <img
           src="https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80&auto=format&fit=crop"
-          alt="Modern law office with dark sophisticated atmosphere"
+          alt="Modern law office"
           className="absolute inset-0 h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-black/60" />
+        <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-primary/20" />
         <div className="relative z-10 flex h-full flex-col items-center justify-center px-12 text-center">
-          <h1 className="text-4xl font-bold leading-tight tracking-tight text-white xl:text-5xl">
-            Inteligência Jurídica<br />Unificada.
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-2 backdrop-blur-sm">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-accent"></span>
+            <span style={{fontFamily:'Lato,sans-serif'}} className="text-xs font-medium text-white/80 tracking-widest uppercase">Powered by AW Intelligence</span>
+          </div>
+          <h1 style={{fontFamily:'EB Garamond,serif', fontSize:'3.5rem', fontWeight:600, lineHeight:1.15, color:'white'}}>
+            Inteligencia Juridica<br />
+            <span style={{background:'linear-gradient(135deg, hsl(270,100%,75%), hsl(190,100%,65%))', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>Unificada.</span>
           </h1>
-          <p className="mt-5 max-w-md text-base leading-relaxed text-white/70">
-            A tradição e excelência de Martins Pontes Advocacia, potencializadas pela tecnologia do AW Legal System.
+          <p style={{fontFamily:'Lato,sans-serif'}} className="mt-6 max-w-md text-base leading-relaxed text-white/70">
+            A tradicao e excelencia de Martins Pontes Advocacia, potencializadas pela tecnologia do AW Legal System.
           </p>
         </div>
       </div>
