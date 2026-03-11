@@ -20,8 +20,8 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import ChatMediaRenderer from "@/components/atendimento/ChatMediaRenderer";
 import AudioRecorder from "@/components/atendimento/AudioRecorder";
-import ChatAudioPlayer from "@/components/atendimento/ChatAudioPlayer";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manual-aw";
@@ -439,9 +439,13 @@ export default function Atendimento() {
                   <p className="text-sm text-muted-foreground">
                     {chat.lastMessageType === "audio"
                       ? "🎵 Áudio"
-                      : (chat.lastMessage && chat.lastMessage.length > 35
-                          ? chat.lastMessage.substring(0, 35) + "..."
-                          : chat.lastMessage)}
+                      : chat.lastMessageType === "image"
+                        ? "📷 Imagem"
+                        : chat.lastMessageType === "document"
+                          ? "📄 Documento"
+                          : (chat.lastMessage && chat.lastMessage.length > 35
+                              ? chat.lastMessage.substring(0, 35) + "..."
+                              : chat.lastMessage)}
                   </p>
                 </div>
                 
@@ -696,13 +700,7 @@ export default function Atendimento() {
                             {msg.origem}
                           </p>
                         )}
-                        {msg.tipo_midia === "audio" ? (
-                          <ChatAudioPlayer src={msg.conteudo || ""} outgoing={outgoing} />
-                        ) : msg.tipo_midia === "imagem" || msg.tipo_midia === "image" ? (
-                          <img src={msg.conteudo || ""} alt="imagem" className="rounded-lg max-w-full max-h-60" />
-                        ) : (
-                          <p className="whitespace-pre-wrap leading-relaxed">{msg.conteudo}</p>
-                        )}
+                        <ChatMediaRenderer conteudo={msg.conteudo || ""} tipo_midia={msg.tipo_midia} media_url={msg.media_url} outgoing={outgoing} />
                         {msg.created_at && (
                           <p className={cn("text-[10px] mt-1 font-mono", outgoing ? "text-violet-200/50 text-right" : "text-muted-foreground/60")}>
                             {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
