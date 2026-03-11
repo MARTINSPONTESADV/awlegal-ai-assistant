@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# n8n (projeto separado - não commitar)
+n8n-mcp/
+*.cjs
+workflow_*.json
+RESOLVAJA_*.json
+audit_*.txt
+n8n.zip

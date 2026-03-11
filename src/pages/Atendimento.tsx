@@ -15,7 +15,7 @@ import {
 import {
   Bot, BotOff, Send, Phone, User, Circle,
   Search, Briefcase, Menu, Info, Pencil, Check, X, Building2, Zap,
-  Archive, ArchiveRestore
+  Archive, ArchiveRestore, MessageSquare
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -97,7 +97,7 @@ export default function Atendimento() {
           })
         );
         setChats(enriched);
-        if (!selectedChat && enriched.length > 0) setSelectedChat(enriched[0].whatsapp_numero);
+        // Bug fix: NÃO selecionar chat automaticamente ao carregar
       }
     }
     load();
@@ -436,7 +436,7 @@ export default function Atendimento() {
               
               <div className="flex items-center justify-between mt-0.5 gap-4 pr-6">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate block w-full text-sm pr-4 text-muted-foreground">
+                  <p className="truncate block w-full text-sm pr-10 text-muted-foreground">
                     {chat.lastMessageType === "audio" ? "🎵 Áudio" : chat.lastMessage}
                   </p>
                 </div>
@@ -743,11 +743,17 @@ export default function Atendimento() {
               </Button>
             )}
             <div className="text-center">
-              <Phone className="h-12 w-12 mx-auto mb-3 opacity-20" />
-              <p className="text-sm">Selecione uma conversa para começar</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">
-                Canal: {canal === "resolva_ja" ? "Resolva Já" : "Martins Pontes"}
+              <div className="h-20 w-20 rounded-full bg-violet-500/10 ring-1 ring-violet-400/20 flex items-center justify-center mx-auto mb-4">
+                <MessageSquare className="h-10 w-10 text-violet-400/40" />
+              </div>
+              <p className="text-base font-semibold text-foreground/70">Selecione um atendimento</p>
+              <p className="text-sm text-muted-foreground/60 mt-1 max-w-[260px] text-center leading-relaxed">
+                Escolha uma conversa na lista lateral para iniciar o atendimento
               </p>
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground/40">
+                <Circle className="h-2 w-2 fill-current" />
+                Canal: {canal === "resolva_ja" ? "Resolva Já" : "Martins Pontes"}
+              </div>
             </div>
           </div>
         )}

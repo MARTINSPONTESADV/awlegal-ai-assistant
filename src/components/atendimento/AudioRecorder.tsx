@@ -20,6 +20,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   const analyserRef = useRef<AnalyserNode | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number>(0);
+  const cancelledRef = useRef<boolean>(false);
 
   useEffect(() => {
     return () => {
@@ -84,6 +85,14 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       };
 
       recorder.onstop = async () => {
+        // If cancelled, discard everything and return immediately
+        if (cancelledRef.current) {
+          console.log(`[AudioRecorder][${sessionId}] CANCELLED — áudio descartado`);
+          sessionStream.getTracks().forEach((t) => t.stop());
+          setSending(false);
+          cancelledRef.current = false;
+          return;
+        }
         // Snapshot the chunks array immediately — no external refs
         const finalChunks = [...sessionChunks];
         const rawBlob = new Blob(finalChunks, { type: recorder.mimeType || "audio/webm" });
@@ -152,12 +161,22 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
   };
 
   const cancelRecording = () => {
+    // Set flag BEFORE stopping — onstop handler will see this and discard
+    cancelledRef.current = true;
+
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
-    try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+
+    // Stop the recorder — onstop will check cancelledRef and skip send
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+    }
+
+    // Also kill the stream tracks immediately
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
     }
+
     setIsRecording(false);
     setSending(false);
     setElapsed(0);
@@ -171,6 +190,9 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       setElapsed(0);
       return;
     }
+
+    // Ensure cancel flag is OFF for a legitimate send
+    cancelledRef.current = false;
 
     // Stop UI timers immediately
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -192,16 +214,32 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
 
   if (isRecording) {
     return (
-      <div className="flex items-center gap-2 flex-1 bg-destructive/10 rounded-lg px-3 py-2 animate-fade-in">
-        <MicOff className="h-4 w-4 text-destructive animate-pulse" />
-        <span className="text-xs font-medium text-destructive">Gravando {formatTime(elapsed)}</span>
-        <canvas ref={canvasRef} width={120} height={28} className="flex-1 max-w-[120px] rounded" />
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={cancelRecording}>
-          <X className="h-4 w-4 text-muted-foreground" />
-        </Button>
-        <Button size="icon" className="h-8 w-8 bg-primary hover:bg-primary/90" onClick={sendRecording} disabled={sending}>
-          <Send className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center flex-1 bg-destructive/10 rounded-lg px-3 py-2 animate-fade-in">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <MicOff className="h-4 w-4 text-destructive animate-pulse shrink-0" />
+          <span className="text-xs font-medium text-destructive shrink-0">Gravando {formatTime(elapsed)}</span>
+          <canvas ref={canvasRef} width={120} height={28} className="flex-1 max-w-[120px] rounded" />
+        </div>
+        <div className="flex items-center gap-4 ml-4 shrink-0">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 px-3 text-destructive hover:text-destructive hover:bg-destructive/20 gap-1.5" 
+            onClick={cancelRecording}
+          >
+            <X className="h-4 w-4" />
+            <span className="text-xs font-semibold">Cancelar</span>
+          </Button>
+          <Button 
+            size="sm" 
+            className="h-8 px-4 bg-emerald-600 hover:bg-emerald-700 gap-1.5" 
+            onClick={sendRecording} 
+            disabled={sending}
+          >
+            <Send className="h-3.5 w-3.5" />
+            <span className="text-xs font-semibold">Enviar</span>
+          </Button>
+        </div>
       </div>
     );
   }
