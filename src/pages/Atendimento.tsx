@@ -434,9 +434,9 @@ export default function Atendimento() {
                 )}
               </div>
               
-              <div className="flex items-center justify-between mt-0.5 gap-4 pr-6">
+              <div className="flex items-center justify-between mt-0.5 mr-2 gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate block w-full text-sm pr-10 text-muted-foreground">
+                  <p className="truncate max-w-[90%] text-sm text-muted-foreground">
                     {chat.lastMessageType === "audio" ? "🎵 Áudio" : chat.lastMessage}
                   </p>
                 </div>
@@ -673,7 +673,7 @@ export default function Atendimento() {
             </div>
 
             {/* Messages */}
-            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 min-h-0 min-w-0 bg-background/30 w-full relative">
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 min-h-0 min-w-0 bg-background/30 w-full relative">
               <div className="space-y-3 max-w-3xl mx-auto w-full">
                 {mensagens.map((msg) => {
                   const outgoing = isOutgoing(msg);
@@ -713,21 +713,21 @@ export default function Atendimento() {
             </div>
 
             {/* Input bar */}
-            <div className="p-3 border-t border-white/[0.06] bg-background z-20">
-              <div className="flex items-center gap-2 max-w-3xl mx-auto">
+            <div className="px-3 pt-3 pb-6 md:pb-4 border-t border-white/[0.06] bg-background z-20">
+              <div className="flex items-center gap-2 sm:gap-3 max-w-3xl mx-auto">
                 <AudioRecorder onSend={handleAudioSend} disabled={sending} />
                 <Input
                   placeholder="Digite uma mensagem..."
                   value={newMsg}
                   onChange={(e) => setNewMsg(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                  className="flex-1 bg-white/[0.04] border-white/[0.08] focus-visible:ring-violet-400/40"
+                  className="flex-1 bg-white/[0.04] border-white/[0.08] focus-visible:ring-violet-400/40 h-11"
                   disabled={sending}
                 />
                 <Button
                   onClick={sendMessage}
                   size="icon"
-                  className="bg-violet-600 hover:bg-violet-700 shrink-0"
+                  className="bg-violet-600 hover:bg-violet-700 shrink-0 h-11 w-11"
                   disabled={sending}
                 >
                   <Send className="h-4 w-4" />
