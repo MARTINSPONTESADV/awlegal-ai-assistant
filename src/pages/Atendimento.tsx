@@ -48,6 +48,7 @@ interface Mensagem {
   direcao: string | null;
   origem: string | null;
   tipo_midia: string | null;
+  media_url?: string | null;
   nome?: string | null;
   created_at: string | null;
 }
@@ -73,8 +74,8 @@ export default function Atendimento() {
 
   useEffect(() => {
     async function load() {
-      // Load only active chats by default to save bandwidth
-      const { data } = await supabase.from("controle_bot").select("*").not("arquivado", "eq", true);
+      // Load only active chats by default to save bandwidth. Handles nulls for legacy records.
+      const { data } = await supabase.from("controle_bot").select("*").or("arquivado.eq.false,arquivado.is.null");
       if (data) {
         const enriched: Chat[] = await Promise.all(
           data.map(async (c) => {
