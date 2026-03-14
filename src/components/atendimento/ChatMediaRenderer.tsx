@@ -83,6 +83,13 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!loaded) setError(true);
+    }, 10000);
+    return () => clearTimeout(timeout);
+  }, [loaded]);
+
   // Fix for pure Base64 rendering (Problem 1)
   const imageSrc = src.startsWith("data:image") || src.startsWith("http") || src.startsWith("blob:") 
     ? src 
