@@ -23,11 +23,25 @@ function isDocumentUrl(url: string): boolean {
 }
 
 function getFileExtension(url: string): string {
+  if (url.startsWith("data:")) {
+    const match = url.match(/^data:([^;]+);/);
+    if (match) {
+      const mime = match[1].toLowerCase();
+      if (mime.includes("pdf")) return "PDF";
+      if (mime.includes("sheet") || mime.includes("excel")) return "XLSX";
+      if (mime.includes("document") || mime.includes("word") || mime.includes("msword")) return "DOCX";
+      if (mime.includes("zip")) return "ZIP";
+      return mime.split("/")[1]?.toUpperCase() || "FILE";
+    }
+  }
   const match = url.match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
   return match ? match[1].toUpperCase() : "FILE";
 }
 
 function getFileName(url: string): string {
+  if (url.startsWith("data:")) {
+    return `documento.${getFileExtension(url).toLowerCase()}`;
+  }
   try {
     const path = new URL(url).pathname;
     const name = path.split("/").pop() || "documento";
@@ -45,11 +59,18 @@ function resolveMediaType(tipo_midia: string | null, conteudo: string): "audio" 
   if (tipo === "imagem" || tipo === "image" || tipo === "imageMessage") return "image";
   if (tipo === "document" || tipo === "documento" || tipo === "documentMessage") return "document";
 
-  // Fallback: detecção por URL
-  if (conteudo && (conteudo.startsWith("http://") || conteudo.startsWith("https://"))) {
-    if (isAudioUrl(conteudo)) return "audio";
-    if (isImageUrl(conteudo)) return "image";
-    if (isDocumentUrl(conteudo)) return "document";
+  // Fallback: detecção por URL ou data URI
+  if (conteudo) {
+    if (conteudo.startsWith("data:")) {
+      if (conteudo.startsWith("data:audio")) return "audio";
+      if (conteudo.startsWith("data:image")) return "image";
+      if (conteudo.startsWith("data:application")) return "document";
+    }
+    if (conteudo.startsWith("http://") || conteudo.startsWith("https://")) {
+      if (isAudioUrl(conteudo)) return "audio";
+      if (isImageUrl(conteudo)) return "image";
+      if (isDocumentUrl(conteudo)) return "document";
+    }
   }
 
   return "text";
@@ -245,6 +266,7 @@ function DocumentMessage({ src, outgoing }: { src: string; outgoing: boolean }) 
   return (
     <a
       href={src}
+      download={name}
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
@@ -274,7 +296,7 @@ function DocumentMessage({ src, outgoing }: { src: string; outgoing: boolean }) 
           "text-[10px] uppercase tracking-wider font-semibold",
           outgoing ? "text-violet-200/50" : "text-muted-foreground/50"
         )}>
-          {ext} • Toque para abrir
+          {ext} • Toque para baixar
         </p>
       </div>
 
