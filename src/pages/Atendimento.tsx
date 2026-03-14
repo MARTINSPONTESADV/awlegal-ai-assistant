@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,10 @@ interface Chat {
   lastTime?: string;
   unread_count?: number;
   arquivado?: boolean;
+  // Computed fields (populated by useMemo)
+  nomeExibicao?: string;
+  ultimaMensagem?: string;
+  tipoMidia?: string;
 }
 
 interface Mensagem {
@@ -74,15 +78,19 @@ export default function Atendimento() {
   useEffect(() => {
     async function load() {
       try {
-        // Load only active chats by default. Handles nulls for legacy records.
         const { data, error } = await supabase.from("controle_bot").select("*").or("arquivado.eq.false,arquivado.is.null");
         if (error) {
           console.error("[Atendimento] Erro ao carregar chats:", error);
           return;
         }
-        if (data) {
-          const enriched: Chat[] = await Promise.all(
-            data.map(async (c: any) => {
+        if (!data || data.length === 0) {
+          console.warn("[Atendimento] Nenhum lead encontrado na controle_bot.");
+          setChats([]);
+          return;
+        }
+        const enriched: Chat[] = await Promise.all(
+          data.map(async (c: any) => {
+            try {
               const { data: msgs } = await supabase
                 .from("historico_mensagens")
                 .select("conteudo, created_at, tipo_midia")
@@ -90,9 +98,9 @@ export default function Atendimento() {
                 .order("created_at", { ascending: false })
                 .limit(1);
               return {
-                whatsapp_numero: c.whatsapp_numero,
-                bot_ativo: c.bot_ativo,
-                last_intercept: c.last_intercept,
+                whatsapp_numero: c.whatsapp_numero || "",
+                bot_ativo: c.bot_ativo ?? null,
+                last_intercept: c.last_intercept || null,
                 nome_contato: c.nome_contato || c.nome || null,
                 canal: c.canal || null,
                 lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
@@ -101,12 +109,27 @@ export default function Atendimento() {
                 unread_count: c.unread_count || 0,
                 arquivado: c.arquivado || false,
               };
-            })
-          );
-          setChats(enriched);
-        }
+            } catch {
+              // Se falhar ao buscar mensagens desse lead, retorna o lead sem a última msg
+              return {
+                whatsapp_numero: c.whatsapp_numero || "",
+                bot_ativo: c.bot_ativo ?? null,
+                last_intercept: c.last_intercept || null,
+                nome_contato: c.nome_contato || c.nome || null,
+                canal: c.canal || null,
+                lastMessage: "Sem mensagens",
+                lastMessageType: "texto",
+                lastTime: undefined,
+                unread_count: c.unread_count || 0,
+                arquivado: c.arquivado || false,
+              };
+            }
+          })
+        );
+        setChats(enriched);
       } catch (err) {
-        console.error("[Atendimento] Exceção ao carregar chats:", err);
+        console.error("[Atendimento] Exceção fatal ao carregar chats:", err);
+        setChats([]);
       }
     }
     load();
@@ -118,13 +141,11 @@ export default function Atendimento() {
     async function loadArchived() {
       try {
         const { data, error } = await supabase.from("controle_bot").select("*").eq("arquivado", true);
-        if (error) {
-          console.error("[Atendimento] Erro ao carregar arquivados:", error);
-          return;
-        }
-        if (data) {
-          const enriched: Chat[] = await Promise.all(
-            data.map(async (c: any) => {
+        if (error) { console.error("[Atendimento] Erro arquivados:", error); return; }
+        if (!data) return;
+        const enriched: Chat[] = await Promise.all(
+          data.map(async (c: any) => {
+            try {
               const { data: msgs } = await supabase
                 .from("historico_mensagens")
                 .select("conteudo, created_at, tipo_midia")
@@ -132,9 +153,9 @@ export default function Atendimento() {
                 .order("created_at", { ascending: false })
                 .limit(1);
               return {
-                whatsapp_numero: c.whatsapp_numero,
-                bot_ativo: c.bot_ativo,
-                last_intercept: c.last_intercept,
+                whatsapp_numero: c.whatsapp_numero || "",
+                bot_ativo: c.bot_ativo ?? null,
+                last_intercept: c.last_intercept || null,
                 nome_contato: c.nome_contato || c.nome || null,
                 canal: c.canal || null,
                 lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
@@ -143,14 +164,27 @@ export default function Atendimento() {
                 unread_count: c.unread_count || 0,
                 arquivado: c.arquivado || false,
               };
-            })
-          );
-          setChats(prev => {
-            const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
-            enriched.forEach(ec => map.set(ec.whatsapp_numero, ec));
-            return Array.from(map.values());
-          });
-        }
+            } catch {
+              return {
+                whatsapp_numero: c.whatsapp_numero || "",
+                bot_ativo: c.bot_ativo ?? null,
+                last_intercept: c.last_intercept || null,
+                nome_contato: c.nome_contato || c.nome || null,
+                canal: c.canal || null,
+                lastMessage: "Sem mensagens",
+                lastMessageType: "texto",
+                lastTime: undefined,
+                unread_count: c.unread_count || 0,
+                arquivado: c.arquivado || false,
+              };
+            }
+          })
+        );
+        setChats(prev => {
+          const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
+          enriched.forEach(ec => map.set(ec.whatsapp_numero, ec));
+          return Array.from(map.values());
+        });
       } catch (err) {
         console.error("[Atendimento] Exceção ao carregar arquivados:", err);
       }
@@ -375,11 +409,34 @@ export default function Atendimento() {
     }
   };
 
-  const filteredChats = chats
+  // ── useMemo: Computed State seguro para renderização ──
+  const conversasComputadas = useMemo(() => {
+    if (!chats || chats.length === 0) return [];
+    return chats.map(chat => {
+      const nomeExibicao = chat.nome_contato || formatPhone(chat.whatsapp_numero || "");
+      const ultimaMensagem = chat.lastMessageType === "audio"
+        ? "🎵 Áudio"
+        : chat.lastMessageType === "image"
+          ? "📷 Imagem"
+          : chat.lastMessageType === "document"
+            ? "📄 Documento"
+            : (chat.lastMessage && chat.lastMessage.length > 35
+                ? chat.lastMessage.substring(0, 35) + "..."
+                : chat.lastMessage || "Sem mensagens");
+      const tipoMidia = chat.lastMessageType || "texto";
+      return {
+        ...chat,
+        nomeExibicao,
+        ultimaMensagem,
+        tipoMidia,
+      };
+    });
+  }, [chats]);
+
+  const filteredChats = conversasComputadas
     .filter((c) => {
-      const matchSearch = c.whatsapp_numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.nome_contato || "").toLowerCase().includes(searchTerm.toLowerCase());
-      // Canal filter: if canal field exists use it, otherwise "resolva_ja" shows all (legacy), "martins_pontes" shows marked ones
+      const matchSearch = (c.whatsapp_numero || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.nomeExibicao || "").toLowerCase().includes(searchTerm.toLowerCase());
       const matchCanal = canal === "resolva_ja"
         ? !c.canal || c.canal === "resolva_ja"
         : c.canal === "martins_pontes";
@@ -509,7 +566,7 @@ export default function Atendimento() {
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <div className="flex items-center justify-between gap-1">
                 <span className="text-sm font-semibold text-foreground truncate pr-4">
-                  {chat.nome_contato || formatPhone(chat.whatsapp_numero)}
+                  {chat.nomeExibicao}
                 </span>
                 {chat.lastTime && (
                   <span className={cn("text-[10px] shrink-0 font-medium", chat.unread_count ? "text-emerald-400" : "text-muted-foreground")}>
@@ -521,15 +578,7 @@ export default function Atendimento() {
               <div className="flex items-center justify-between mt-0.5 gap-2 pr-4">
                 <div className="flex-1">
                   <p className="text-sm text-muted-foreground">
-                    {chat.lastMessageType === "audio"
-                      ? "🎵 Áudio"
-                      : chat.lastMessageType === "image"
-                        ? "📷 Imagem"
-                        : chat.lastMessageType === "document"
-                          ? "📄 Documento"
-                          : (chat.lastMessage && chat.lastMessage.length > 35
-                              ? chat.lastMessage.substring(0, 35) + "..."
-                              : chat.lastMessage)}
+                    {chat.ultimaMensagem}
                   </p>
                 </div>
                 
