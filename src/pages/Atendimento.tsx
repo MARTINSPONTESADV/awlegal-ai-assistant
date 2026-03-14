@@ -69,32 +69,44 @@ export default function Atendimento() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // ── Fetch: carrega dados brutos de controle_bot ──
+  // ── Fetch: carrega dados brutos de controle_bot (SEM JOIN, SEM coluna arquivado) ──
   useEffect(() => {
     async function load() {
       try {
-        const { data, error } = await supabase
-          .from("controle_bot")
-          .select("*, historico_mensagens(conteudo, created_at, tipo_midia)")
-          .or("arquivado.eq.false,arquivado.is.null")
-          .order("created_at", { referencedTable: "historico_mensagens", ascending: false });
-
+        // Query limpa: busca TODOS os leads (a coluna arquivado não existe nessa tabela)
+        const { data, error } = await supabase.from("controle_bot").select("*");
         if (error) {
-          console.error("[Atendimento] Erro na query controle_bot:", error);
-          // Fallback: tenta sem o JOIN
-          const { data: fallbackData, error: fallbackError } = await supabase
-            .from("controle_bot")
-            .select("*")
-            .or("arquivado.eq.false,arquivado.is.null");
-          if (fallbackError) {
-            console.error("[Atendimento] Erro no fallback:", fallbackError);
-            setRawLeads([]);
-            return;
-          }
-          setRawLeads(fallbackData || []);
+          console.error("[Atendimento] Erro ao carregar controle_bot:", error);
+          setRawLeads([]);
           return;
         }
-        setRawLeads(data || []);
+        if (!data || data.length === 0) {
+          console.warn("[Atendimento] Nenhum lead na controle_bot.");
+          setRawLeads([]);
+          return;
+        }
+
+        // Enriquece cada lead com a última mensagem (query separada, sem FK)
+        const enriched = await Promise.all(
+          data.map(async (lead: any) => {
+            try {
+              const { data: msgs } = await supabase
+                .from("historico_mensagens")
+                .select("conteudo, created_at, tipo_midia")
+                .eq("whatsapp_id", lead.whatsapp_numero)
+                .order("created_at", { ascending: false })
+                .limit(1);
+              return {
+                ...lead,
+                historico_mensagens: msgs || [],
+              };
+            } catch {
+              return { ...lead, historico_mensagens: [] };
+            }
+          })
+        );
+        console.log("[Atendimento] Leads carregados:", enriched.length);
+        setRawLeads(enriched);
       } catch (err) {
         console.error("[Atendimento] Exceção fatal:", err);
         setRawLeads([]);
@@ -102,44 +114,6 @@ export default function Atendimento() {
     }
     load();
   }, []);
-
-  // Fetch archived chats lazily when toggled
-  useEffect(() => {
-    if (!showArchived) return;
-    async function loadArchived() {
-      try {
-        const { data, error } = await supabase
-          .from("controle_bot")
-          .select("*, historico_mensagens(conteudo, created_at, tipo_midia)")
-          .eq("arquivado", true)
-          .order("created_at", { referencedTable: "historico_mensagens", ascending: false });
-
-        if (error) {
-          console.error("[Atendimento] Erro ao carregar arquivados:", error);
-          // Fallback sem JOIN
-          const { data: fb } = await supabase.from("controle_bot").select("*").eq("arquivado", true);
-          if (fb) {
-            setRawLeads(prev => {
-              const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
-              fb.forEach(ec => map.set(ec.whatsapp_numero, ec));
-              return Array.from(map.values());
-            });
-          }
-          return;
-        }
-        if (data) {
-          setRawLeads(prev => {
-            const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
-            data.forEach(ec => map.set(ec.whatsapp_numero, ec));
-            return Array.from(map.values());
-          });
-        }
-      } catch (err) {
-        console.error("[Atendimento] Exceção ao carregar arquivados:", err);
-      }
-    }
-    loadArchived();
-  }, [showArchived]);
 
   // ── useMemo: Computed State SEGURO para renderização ──
   const conversasComputadas = useMemo(() => {
@@ -187,15 +161,14 @@ export default function Atendimento() {
         const matchCanal = canal === "resolva_ja"
           ? !c.canal || c.canal === "resolva_ja"
           : c.canal === "martins_pontes";
-        const matchArchive = (c.arquivado || false) === showArchived;
-        return matchSearch && matchCanal && matchArchive;
+        return matchSearch && matchCanal;
       })
       .sort((a: any, b: any) => {
         const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
         const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
         return timeB - timeA;
       });
-  }, [conversasComputadas, searchTerm, canal, showArchived]);
+  }, [conversasComputadas, searchTerm, canal]);
 
   // ── Carrega mensagens do chat selecionado ──
   useEffect(() => {
