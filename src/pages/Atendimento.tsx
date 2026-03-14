@@ -28,21 +28,13 @@ const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manu
 
 type Canal = "resolva_ja" | "martins_pontes";
 
-interface Chat {
-  whatsapp_numero: string;
-  bot_ativo: boolean | null;
-  last_intercept: string | null;
-  nome_contato: string | null;
-  canal?: string | null;
-  lastMessage?: string;
-  lastMessageType?: string;
-  lastTime?: string;
-  unread_count?: number;
-  arquivado?: boolean;
-  // Computed fields (populated by useMemo)
-  nomeExibicao?: string;
-  ultimaMensagem?: string;
-  tipoMidia?: string;
+// ── FORA DO COMPONENTE: funções puras sem problema de hoisting ──
+function formatPhone(id: string): string {
+  if (!id) return "Desconhecido";
+  if (id.length === 13) return `+${id.slice(0, 2)} (${id.slice(2, 4)}) ${id.slice(4, 5)} ${id.slice(5, 9)}-${id.slice(9)}`;
+  if (id.length === 11) return `(${id.slice(0, 2)}) ${id.slice(2, 3)} ${id.slice(3, 7)}-${id.slice(7)}`;
+  if (id.length === 10) return `(${id.slice(0, 2)}) ${id.slice(2, 6)}-${id.slice(6)}`;
+  return id;
 }
 
 interface Mensagem {
@@ -59,7 +51,9 @@ interface Mensagem {
 export default function Atendimento() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
-  const [chats, setChats] = useState<Chat[]>([]);
+
+  // ── Estado Base: rawLeads armazena os dados BRUTOS do Supabase ──
+  const [rawLeads, setRawLeads] = useState<any[]>([]);
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [newMsg, setNewMsg] = useState("");
@@ -75,61 +69,35 @@ export default function Atendimento() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
+  // ── Fetch: carrega dados brutos de controle_bot ──
   useEffect(() => {
     async function load() {
       try {
-        const { data, error } = await supabase.from("controle_bot").select("*").or("arquivado.eq.false,arquivado.is.null");
+        const { data, error } = await supabase
+          .from("controle_bot")
+          .select("*, historico_mensagens(conteudo, created_at, tipo_midia)")
+          .or("arquivado.eq.false,arquivado.is.null")
+          .order("created_at", { referencedTable: "historico_mensagens", ascending: false });
+
         if (error) {
-          console.error("[Atendimento] Erro ao carregar chats:", error);
+          console.error("[Atendimento] Erro na query controle_bot:", error);
+          // Fallback: tenta sem o JOIN
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from("controle_bot")
+            .select("*")
+            .or("arquivado.eq.false,arquivado.is.null");
+          if (fallbackError) {
+            console.error("[Atendimento] Erro no fallback:", fallbackError);
+            setRawLeads([]);
+            return;
+          }
+          setRawLeads(fallbackData || []);
           return;
         }
-        if (!data || data.length === 0) {
-          console.warn("[Atendimento] Nenhum lead encontrado na controle_bot.");
-          setChats([]);
-          return;
-        }
-        const enriched: Chat[] = await Promise.all(
-          data.map(async (c: any) => {
-            try {
-              const { data: msgs } = await supabase
-                .from("historico_mensagens")
-                .select("conteudo, created_at, tipo_midia")
-                .eq("whatsapp_id", c.whatsapp_numero)
-                .order("created_at", { ascending: false })
-                .limit(1);
-              return {
-                whatsapp_numero: c.whatsapp_numero || "",
-                bot_ativo: c.bot_ativo ?? null,
-                last_intercept: c.last_intercept || null,
-                nome_contato: c.nome_contato || c.nome || null,
-                canal: c.canal || null,
-                lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
-                lastMessageType: msgs?.[0]?.tipo_midia || "texto",
-                lastTime: msgs?.[0]?.created_at || undefined,
-                unread_count: c.unread_count || 0,
-                arquivado: c.arquivado || false,
-              };
-            } catch {
-              // Se falhar ao buscar mensagens desse lead, retorna o lead sem a última msg
-              return {
-                whatsapp_numero: c.whatsapp_numero || "",
-                bot_ativo: c.bot_ativo ?? null,
-                last_intercept: c.last_intercept || null,
-                nome_contato: c.nome_contato || c.nome || null,
-                canal: c.canal || null,
-                lastMessage: "Sem mensagens",
-                lastMessageType: "texto",
-                lastTime: undefined,
-                unread_count: c.unread_count || 0,
-                arquivado: c.arquivado || false,
-              };
-            }
-          })
-        );
-        setChats(enriched);
+        setRawLeads(data || []);
       } catch (err) {
-        console.error("[Atendimento] Exceção fatal ao carregar chats:", err);
-        setChats([]);
+        console.error("[Atendimento] Exceção fatal:", err);
+        setRawLeads([]);
       }
     }
     load();
@@ -140,51 +108,32 @@ export default function Atendimento() {
     if (!showArchived) return;
     async function loadArchived() {
       try {
-        const { data, error } = await supabase.from("controle_bot").select("*").eq("arquivado", true);
-        if (error) { console.error("[Atendimento] Erro arquivados:", error); return; }
-        if (!data) return;
-        const enriched: Chat[] = await Promise.all(
-          data.map(async (c: any) => {
-            try {
-              const { data: msgs } = await supabase
-                .from("historico_mensagens")
-                .select("conteudo, created_at, tipo_midia")
-                .eq("whatsapp_id", c.whatsapp_numero)
-                .order("created_at", { ascending: false })
-                .limit(1);
-              return {
-                whatsapp_numero: c.whatsapp_numero || "",
-                bot_ativo: c.bot_ativo ?? null,
-                last_intercept: c.last_intercept || null,
-                nome_contato: c.nome_contato || c.nome || null,
-                canal: c.canal || null,
-                lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
-                lastMessageType: msgs?.[0]?.tipo_midia || "texto",
-                lastTime: msgs?.[0]?.created_at || undefined,
-                unread_count: c.unread_count || 0,
-                arquivado: c.arquivado || false,
-              };
-            } catch {
-              return {
-                whatsapp_numero: c.whatsapp_numero || "",
-                bot_ativo: c.bot_ativo ?? null,
-                last_intercept: c.last_intercept || null,
-                nome_contato: c.nome_contato || c.nome || null,
-                canal: c.canal || null,
-                lastMessage: "Sem mensagens",
-                lastMessageType: "texto",
-                lastTime: undefined,
-                unread_count: c.unread_count || 0,
-                arquivado: c.arquivado || false,
-              };
-            }
-          })
-        );
-        setChats(prev => {
-          const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
-          enriched.forEach(ec => map.set(ec.whatsapp_numero, ec));
-          return Array.from(map.values());
-        });
+        const { data, error } = await supabase
+          .from("controle_bot")
+          .select("*, historico_mensagens(conteudo, created_at, tipo_midia)")
+          .eq("arquivado", true)
+          .order("created_at", { referencedTable: "historico_mensagens", ascending: false });
+
+        if (error) {
+          console.error("[Atendimento] Erro ao carregar arquivados:", error);
+          // Fallback sem JOIN
+          const { data: fb } = await supabase.from("controle_bot").select("*").eq("arquivado", true);
+          if (fb) {
+            setRawLeads(prev => {
+              const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
+              fb.forEach(ec => map.set(ec.whatsapp_numero, ec));
+              return Array.from(map.values());
+            });
+          }
+          return;
+        }
+        if (data) {
+          setRawLeads(prev => {
+            const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
+            data.forEach(ec => map.set(ec.whatsapp_numero, ec));
+            return Array.from(map.values());
+          });
+        }
       } catch (err) {
         console.error("[Atendimento] Exceção ao carregar arquivados:", err);
       }
@@ -192,6 +141,63 @@ export default function Atendimento() {
     loadArchived();
   }, [showArchived]);
 
+  // ── useMemo: Computed State SEGURO para renderização ──
+  const conversasComputadas = useMemo(() => {
+    if (!rawLeads || !Array.isArray(rawLeads)) return [];
+    return rawLeads.map((lead: any) => {
+      const mensagem = lead.historico_mensagens?.[0]?.conteudo || "Iniciou conversa";
+      const tipo = lead.historico_mensagens?.[0]?.tipo_midia || "texto";
+      const lastTime = lead.historico_mensagens?.[0]?.created_at || undefined;
+      // Fallback triplo de segurança para o nome
+      const nomeExibicao = lead.nome || lead.nome_contato || formatPhone(lead.whatsapp_numero || "") || "Desconhecido";
+
+      // Prévia da mensagem
+      const ultimaMensagem = tipo === "audio"
+        ? "🎵 Áudio"
+        : tipo === "image"
+          ? "📷 Imagem"
+          : tipo === "document"
+            ? "📄 Documento"
+            : (mensagem && mensagem.length > 35
+                ? mensagem.substring(0, 35) + "..."
+                : mensagem);
+
+      return {
+        ...lead,
+        nomeExibicao,
+        ultimaMensagem,
+        tipoMidia: tipo,
+        lastTime,
+        // Normalização de campos seguros
+        whatsapp_numero: lead.whatsapp_numero || "",
+        bot_ativo: lead.bot_ativo ?? null,
+        arquivado: lead.arquivado || false,
+        canal: lead.canal || null,
+        unread_count: lead.unread_count || 0,
+      };
+    });
+  }, [rawLeads]);
+
+  // ── filteredChats: filtragem e ordenação sobre o computed ──
+  const filteredChats = useMemo(() => {
+    return conversasComputadas
+      .filter((c: any) => {
+        const matchSearch = (c.whatsapp_numero || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (c.nomeExibicao || "").toLowerCase().includes(searchTerm.toLowerCase());
+        const matchCanal = canal === "resolva_ja"
+          ? !c.canal || c.canal === "resolva_ja"
+          : c.canal === "martins_pontes";
+        const matchArchive = (c.arquivado || false) === showArchived;
+        return matchSearch && matchCanal && matchArchive;
+      })
+      .sort((a: any, b: any) => {
+        const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
+        const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
+        return timeB - timeA;
+      });
+  }, [conversasComputadas, searchTerm, canal, showArchived]);
+
+  // ── Carrega mensagens do chat selecionado ──
   useEffect(() => {
     if (!selectedChat) return;
     async function loadMsgs() {
@@ -207,7 +213,7 @@ export default function Atendimento() {
     const channel = supabase
       .channel(`chat-${selectedChat}`)
       .on("postgres_changes", {
-        event: "*", // Listen to INSERT, UPDATE, DELETE
+        event: "*",
         schema: "public",
         table: "historico_mensagens",
         filter: `whatsapp_id=eq.${selectedChat}`,
@@ -226,14 +232,12 @@ export default function Atendimento() {
   }, [selectedChat]);
 
   useEffect(() => {
-    // Scroll APENAS dentro do container do chat, nunca no documento global
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [mensagens]);
 
-  // ── Realtime GLOBAL: atualiza lastTime/lastMessage/unread_count de QUALQUER contato ──
-  // Isso faz o contato "pular para o topo" ao receber nova mensagem (padrão WhatsApp)
+  // ── Realtime GLOBAL: atualiza lastMessage de QUALQUER contato ──
   useEffect(() => {
     const globalChannel = supabase
       .channel("todas-mensagens-realtime")
@@ -246,18 +250,14 @@ export default function Atendimento() {
         const remetente = nova.whatsapp_id;
         if (!remetente) return;
 
-        setChats((prev) =>
-          prev.map((c) => {
+        setRawLeads((prev) =>
+          prev.map((c: any) => {
             if (c.whatsapp_numero !== remetente) return c;
-            
-            // Determina se é mensagem de entrada (do cliente) para incrementar unread
             const isIncoming = nova.direcao === "entrada" || nova.origem === "cliente";
+            // Injeta a nova mensagem no array aninhado para o useMemo recomputar
             return {
               ...c,
-              lastMessage: nova.conteudo || c.lastMessage,
-              lastMessageType: nova.tipo_midia || "texto",
-              lastTime: nova.created_at || c.lastTime,
-              // Só incrementa badge se o chat NÃO está selecionado E é mensagem incoming
+              historico_mensagens: [{ conteudo: nova.conteudo, tipo_midia: nova.tipo_midia, created_at: nova.created_at }],
               unread_count: (isIncoming && selectedChat !== remetente)
                 ? (c.unread_count || 0) + 1
                 : c.unread_count,
@@ -268,10 +268,9 @@ export default function Atendimento() {
       .subscribe();
 
     return () => { supabase.removeChannel(globalChannel); };
-  // selectedChat no dep array para o badge só incrementar para chats não ativos
   }, [selectedChat]);
 
-  // ── Realtime CONTROLE_BOT: escuta atualizações de perfil (nome) e status (arquivado) ──
+  // ── Realtime CONTROLE_BOT: escuta atualizações de perfil ──
   useEffect(() => {
     const controleChannel = supabase
       .channel("controle-bot-realtime")
@@ -281,14 +280,16 @@ export default function Atendimento() {
         table: "controle_bot",
       }, (payload) => {
         const atualizado = payload.new as any;
-        
-        setChats((prev) =>
-          prev.map((c) => {
+
+        setRawLeads((prev) =>
+          prev.map((c: any) => {
             if (c.whatsapp_numero !== atualizado.whatsapp_numero) return c;
             return {
               ...c,
+              nome: atualizado.nome || atualizado.nome_contato || c.nome,
               nome_contato: atualizado.nome_contato || atualizado.nome || c.nome_contato,
               arquivado: atualizado.arquivado ?? c.arquivado,
+              bot_ativo: atualizado.bot_ativo ?? c.bot_ativo,
             };
           })
         );
@@ -298,11 +299,11 @@ export default function Atendimento() {
     return () => { supabase.removeChannel(controleChannel); };
   }, []);
 
-  const currentChat = chats.find((c) => c.whatsapp_numero === selectedChat);
+  const currentChat = conversasComputadas.find((c: any) => c.whatsapp_numero === selectedChat);
 
   useEffect(() => {
     if (currentChat) {
-      setContactName(currentChat.nome_contato || "");
+      setContactName(currentChat.nomeExibicao || "");
       setEditingName(false);
     }
   }, [selectedChat]);
@@ -310,14 +311,13 @@ export default function Atendimento() {
   const saveContactName = async () => {
     if (!selectedChat) return;
     const trimmed = contactName.trim();
-    // Atualiza AMBAS as colunas para compatibilidade
     await supabase
       .from("controle_bot")
       .update({ nome_contato: trimmed || null, nome: trimmed || null } as any)
       .eq("whatsapp_numero", selectedChat);
-    setChats((prev) =>
-      prev.map((c) =>
-        c.whatsapp_numero === selectedChat ? { ...c, nome_contato: trimmed || null } : c
+    setRawLeads((prev) =>
+      prev.map((c: any) =>
+        c.whatsapp_numero === selectedChat ? { ...c, nome_contato: trimmed || null, nome: trimmed || null } : c
       )
     );
     setEditingName(false);
@@ -326,12 +326,10 @@ export default function Atendimento() {
 
   const toggleBot = async () => {
     if (!currentChat || !selectedChat) return;
-
-    // ── Optimistic UI: atualiza o estado ANTES de chamar o Supabase ──
     const previousVal = currentChat.bot_ativo;
     const newVal = !previousVal;
-    setChats((prev) =>
-      prev.map((c) =>
+    setRawLeads((prev) =>
+      prev.map((c: any) =>
         c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: newVal } : c
       )
     );
@@ -349,9 +347,8 @@ export default function Atendimento() {
         description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
       });
     } catch {
-      // ── Rollback: reverte o estado para o valor original ──
-      setChats((prev) =>
-        prev.map((c) =>
+      setRawLeads((prev) =>
+        prev.map((c: any) =>
           c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: previousVal } : c
         )
       );
@@ -384,7 +381,7 @@ export default function Atendimento() {
     const ext = extension.startsWith(".") ? extension : `.${extension}`;
     const filename = `${selectedChat}/${Date.now()}${ext}`;
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("mensagens_audio")
       .upload(filename, blob, { contentType, cacheControl: "3600", upsert: false });
 
@@ -409,70 +406,20 @@ export default function Atendimento() {
     }
   };
 
-  // ── useMemo: Computed State seguro para renderização ──
-  const conversasComputadas = useMemo(() => {
-    if (!chats || chats.length === 0) return [];
-    return chats.map(chat => {
-      const nomeExibicao = chat.nome_contato || formatPhone(chat.whatsapp_numero || "");
-      const ultimaMensagem = chat.lastMessageType === "audio"
-        ? "🎵 Áudio"
-        : chat.lastMessageType === "image"
-          ? "📷 Imagem"
-          : chat.lastMessageType === "document"
-            ? "📄 Documento"
-            : (chat.lastMessage && chat.lastMessage.length > 35
-                ? chat.lastMessage.substring(0, 35) + "..."
-                : chat.lastMessage || "Sem mensagens");
-      const tipoMidia = chat.lastMessageType || "texto";
-      return {
-        ...chat,
-        nomeExibicao,
-        ultimaMensagem,
-        tipoMidia,
-      };
-    });
-  }, [chats]);
-
-  const filteredChats = conversasComputadas
-    .filter((c) => {
-      const matchSearch = (c.whatsapp_numero || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.nomeExibicao || "").toLowerCase().includes(searchTerm.toLowerCase());
-      const matchCanal = canal === "resolva_ja"
-        ? !c.canal || c.canal === "resolva_ja"
-        : c.canal === "martins_pontes";
-      const matchArchive = (c.arquivado || false) === showArchived;
-      return matchSearch && matchCanal && matchArchive;
-    })
-    .sort((a, b) => {
-      const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
-      const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
-      return timeB - timeA;
-    });
-
-  const formatPhone = (id: string) => {
-    if (id.length === 13) return `+${id.slice(0, 2)} (${id.slice(2, 4)}) ${id.slice(4, 5)} ${id.slice(5, 9)}-${id.slice(9)}`;
-    if (id.length === 11) return `(${id.slice(0, 2)}) ${id.slice(2, 3)} ${id.slice(3, 7)}-${id.slice(7)}`;
-    if (id.length === 10) return `(${id.slice(0, 2)}) ${id.slice(2, 6)}-${id.slice(6)}`;
-    return id;
-  };
-
   const isOutgoing = (msg: Mensagem) => {
     const origem = msg.origem?.toLowerCase();
     return origem === "bot" || origem === "advogado";
   };
 
-  // ── Marca mensagens como lidas ao selecionar o contato ──
   const markAsRead = async (numero: string) => {
-    // Zera no banco (coluna unread_count na tabela controle_bot)
     supabase
       .from("controle_bot")
       .update({ unread_count: 0 } as any)
       .eq("whatsapp_numero", numero)
-      .then(() => {}); // fire-and-forget, não bloqueia a UI
+      .then(() => {});
 
-    // Zera instantaneamente no estado local (Optimistic UI)
-    setChats((prev) =>
-      prev.map((c) =>
+    setRawLeads((prev) =>
+      prev.map((c: any) =>
         c.whatsapp_numero === numero ? { ...c, unread_count: 0 } : c
       )
     );
@@ -514,10 +461,9 @@ export default function Atendimento() {
     </div>
   );
 
-  // ── Chat list ──
+  // ── Chat list: itera APENAS sobre filteredChats (derivado de conversasComputadas) ──
   const chatListContent = (
     <>
-      {/* Canal selector inside list and Archive Button */}
       <div className="px-3 pt-3 pb-2 flex items-center justify-between gap-2">
         <div className="flex-1 overflow-x-auto">
           {canalSelector}
@@ -545,71 +491,71 @@ export default function Atendimento() {
         </div>
       </div>
       <ScrollArea className="flex-1">
-        {filteredChats.map((chat) => (
-          <button
-            key={chat.whatsapp_numero}
-            onClick={() => handleSelectChat(chat.whatsapp_numero)}
-            className={cn(
-              "group relative w-full flex items-start gap-3 px-3 py-3 text-left transition-all border-b border-white/[0.04] hover:bg-white/[0.05]",
-              selectedChat === chat.whatsapp_numero && "bg-violet-500/10 border-l-2 border-l-violet-400"
-            )}
-          >
-            <div className="relative shrink-0 pt-0.5">
-              <div className="h-10 w-10 rounded-full bg-violet-500/15 ring-1 ring-violet-400/20 flex items-center justify-center">
-                <Phone className="h-4 w-4 text-violet-400" />
-              </div>
-              {chat.bot_ativo && (
-                <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-background" />
-              )}
-            </div>
-            
-            <div className="flex-1 min-w-0 flex flex-col justify-center">
-              <div className="flex items-center justify-between gap-1">
-                <span className="text-sm font-semibold text-foreground truncate pr-4">
-                  {chat.nomeExibicao}
-                </span>
-                {chat.lastTime && (
-                  <span className={cn("text-[10px] shrink-0 font-medium", chat.unread_count ? "text-emerald-400" : "text-muted-foreground")}>
-                    {format(new Date(chat.lastTime), "HH:mm")}
-                  </span>
-                )}
-              </div>
-              
-              <div className="flex items-center justify-between mt-0.5 gap-2 pr-4">
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">
-                    {chat.ultimaMensagem}
-                  </p>
-                </div>
-                
-                {/* Unread Badge */}
-                {chat.unread_count && chat.unread_count > 0 ? (
-                  <div className="bg-emerald-500 text-white rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm">
-                    {chat.unread_count}
-                  </div>
-                ) : null}
-              </div>
-              
-              <div className="flex items-center justify-between gap-1 mt-1.5 opacity-80">
-                <div className="flex items-center gap-1">
-                  {chat.bot_ativo ? (
-                    <Bot className="h-3.5 w-3.5 text-violet-400" />
-                  ) : (
-                    <User className="h-3.5 w-3.5 text-amber-400" />
-                  )}
-                  <span className="text-[11px] text-muted-foreground/90 font-medium tracking-tight">
-                    {chat.bot_ativo ? "Bot ativo" : "Humano"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </button>
-        ))}
-        {filteredChats.length === 0 && (
+        {filteredChats.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
             <Search className="h-8 w-8 opacity-30" />
             <p className="text-sm">Nenhuma conversa encontrada</p>
           </div>
+        ) : (
+          filteredChats.map((chat: any) => (
+            <button
+              key={chat.whatsapp_numero}
+              onClick={() => handleSelectChat(chat.whatsapp_numero)}
+              className={cn(
+                "group relative w-full flex items-start gap-3 px-3 py-3 text-left transition-all border-b border-white/[0.04] hover:bg-white/[0.05]",
+                selectedChat === chat.whatsapp_numero && "bg-violet-500/10 border-l-2 border-l-violet-400"
+              )}
+            >
+              <div className="relative shrink-0 pt-0.5">
+                <div className="h-10 w-10 rounded-full bg-violet-500/15 ring-1 ring-violet-400/20 flex items-center justify-center">
+                  <Phone className="h-4 w-4 text-violet-400" />
+                </div>
+                {chat.bot_ativo && (
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-background" />
+                )}
+              </div>
+              
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-foreground truncate pr-4">
+                    {chat.nomeExibicao}
+                  </span>
+                  {chat.lastTime && (
+                    <span className={cn("text-[10px] shrink-0 font-medium", chat.unread_count ? "text-emerald-400" : "text-muted-foreground")}>
+                      {format(new Date(chat.lastTime), "HH:mm")}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex items-center justify-between mt-0.5 gap-2 pr-4">
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">
+                      {chat.ultimaMensagem}
+                    </p>
+                  </div>
+                  
+                  {chat.unread_count && chat.unread_count > 0 ? (
+                    <div className="bg-emerald-500 text-white rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm">
+                      {chat.unread_count}
+                    </div>
+                  ) : null}
+                </div>
+                
+                <div className="flex items-center justify-between gap-1 mt-1.5 opacity-80">
+                  <div className="flex items-center gap-1">
+                    {chat.bot_ativo ? (
+                      <Bot className="h-3.5 w-3.5 text-violet-400" />
+                    ) : (
+                      <User className="h-3.5 w-3.5 text-amber-400" />
+                    )}
+                    <span className="text-[11px] text-muted-foreground/90 font-medium tracking-tight">
+                      {chat.bot_ativo ? "Bot ativo" : "Humano"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </button>
+          ))
         )}
       </ScrollArea>
     </>
@@ -635,21 +581,21 @@ export default function Atendimento() {
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={saveContactName}>
               <Check className="h-3.5 w-3.5 text-emerald-400" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingName(false); setContactName(currentChat.nome_contato || ""); }}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingName(false); setContactName(currentChat.nomeExibicao || ""); }}>
               <X className="h-3.5 w-3.5 text-destructive" />
             </Button>
           </div>
         ) : (
           <div className="flex items-center justify-center gap-1 mt-1">
             <p className="font-semibold text-sm text-foreground">
-              {currentChat.nome_contato || formatPhone(selectedChat || "")}
+              {currentChat.nomeExibicao}
             </p>
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingName(true)}>
               <Pencil className="h-3 w-3 text-muted-foreground" />
             </Button>
           </div>
         )}
-        {currentChat.nome_contato && (
+        {(currentChat.nome || currentChat.nome_contato) && (
           <p className="text-xs text-muted-foreground font-mono">{formatPhone(selectedChat || "")}</p>
         )}
         <Badge
@@ -690,7 +636,7 @@ export default function Atendimento() {
             try {
               const { error } = await supabase.from("controle_bot").update({ arquivado: novoStatus } as any).eq("whatsapp_numero", selectedChat);
               if (error) throw error;
-              setChats(prev => prev.map(c => c.whatsapp_numero === selectedChat ? { ...c, arquivado: novoStatus } : c));
+              setRawLeads(prev => prev.map((c: any) => c.whatsapp_numero === selectedChat ? { ...c, arquivado: novoStatus } : c));
               if (novoStatus) setSelectedChat(null);
               toast({ title: novoStatus ? "Conversa arquivada" : "Conversa retornada das arquivadas" });
             } catch (err) {
@@ -786,14 +732,13 @@ export default function Atendimento() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground truncate">
-                    {currentChat?.nome_contato || formatPhone(selectedChat)}
+                    {currentChat?.nomeExibicao || formatPhone(selectedChat)}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
                     {currentChat?.bot_ativo ? "🤖 Bot ativo" : "👤 Humano atendendo"}
                   </p>
                 </div>
               </div>
-              {/* Canal badge in chat header */}
               <div className="flex items-center gap-2 shrink-0">
                 <Badge variant="outline" className={cn(
                   "text-[10px] hidden sm:flex",
