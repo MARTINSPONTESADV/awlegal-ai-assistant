@@ -73,33 +73,40 @@ export default function Atendimento() {
 
   useEffect(() => {
     async function load() {
-      // Load only active chats by default to save bandwidth. Handles nulls for legacy records.
-      const { data } = await supabase.from("controle_bot").select("*").or("arquivado.eq.false,arquivado.is.null");
-      if (data) {
-        const enriched: Chat[] = await Promise.all(
-          data.map(async (c) => {
-            const { data: msgs } = await supabase
-              .from("historico_mensagens")
-              .select("conteudo, created_at, tipo_midia")
-              .eq("whatsapp_id", c.whatsapp_numero)
-              .order("created_at", { ascending: false })
-              .limit(1);
-            return {
-              whatsapp_numero: c.whatsapp_numero,
-              bot_ativo: c.bot_ativo,
-              last_intercept: c.last_intercept,
-              nome_contato: c.nome_contato || null,
-              canal: (c as any).canal || null,
-              lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
-              lastMessageType: msgs?.[0]?.tipo_midia || "texto",
-              lastTime: msgs?.[0]?.created_at || undefined,
-              unread_count: (c as any).unread_count || 0,
-              arquivado: (c as any).arquivado || false,
-            };
-          })
-        );
-        setChats(enriched);
-        // Bug fix: NÃO selecionar chat automaticamente ao carregar
+      try {
+        // Load only active chats by default. Handles nulls for legacy records.
+        const { data, error } = await supabase.from("controle_bot").select("*").or("arquivado.eq.false,arquivado.is.null");
+        if (error) {
+          console.error("[Atendimento] Erro ao carregar chats:", error);
+          return;
+        }
+        if (data) {
+          const enriched: Chat[] = await Promise.all(
+            data.map(async (c: any) => {
+              const { data: msgs } = await supabase
+                .from("historico_mensagens")
+                .select("conteudo, created_at, tipo_midia")
+                .eq("whatsapp_id", c.whatsapp_numero)
+                .order("created_at", { ascending: false })
+                .limit(1);
+              return {
+                whatsapp_numero: c.whatsapp_numero,
+                bot_ativo: c.bot_ativo,
+                last_intercept: c.last_intercept,
+                nome_contato: c.nome_contato || c.nome || null,
+                canal: c.canal || null,
+                lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
+                lastMessageType: msgs?.[0]?.tipo_midia || "texto",
+                lastTime: msgs?.[0]?.created_at || undefined,
+                unread_count: c.unread_count || 0,
+                arquivado: c.arquivado || false,
+              };
+            })
+          );
+          setChats(enriched);
+        }
+      } catch (err) {
+        console.error("[Atendimento] Exceção ao carregar chats:", err);
       }
     }
     load();
@@ -109,35 +116,43 @@ export default function Atendimento() {
   useEffect(() => {
     if (!showArchived) return;
     async function loadArchived() {
-      const { data } = await supabase.from("controle_bot").select("*").eq("arquivado", true);
-      if (data) {
-        const enriched: Chat[] = await Promise.all(
-          data.map(async (c) => {
-            const { data: msgs } = await supabase
-              .from("historico_mensagens")
-              .select("conteudo, created_at, tipo_midia")
-              .eq("whatsapp_id", c.whatsapp_numero)
-              .order("created_at", { ascending: false })
-              .limit(1);
-            return {
-              whatsapp_numero: c.whatsapp_numero,
-              bot_ativo: c.bot_ativo,
-              last_intercept: c.last_intercept,
-              nome_contato: c.nome_contato || null,
-              canal: (c as any).canal || null,
-              lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
-              lastMessageType: msgs?.[0]?.tipo_midia || "texto",
-              lastTime: msgs?.[0]?.created_at || undefined,
-              unread_count: (c as any).unread_count || 0,
-              arquivado: (c as any).arquivado || false,
-            };
-          })
-        );
-        setChats(prev => {
-          const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
-          enriched.forEach(ec => map.set(ec.whatsapp_numero, ec));
-          return Array.from(map.values());
-        });
+      try {
+        const { data, error } = await supabase.from("controle_bot").select("*").eq("arquivado", true);
+        if (error) {
+          console.error("[Atendimento] Erro ao carregar arquivados:", error);
+          return;
+        }
+        if (data) {
+          const enriched: Chat[] = await Promise.all(
+            data.map(async (c: any) => {
+              const { data: msgs } = await supabase
+                .from("historico_mensagens")
+                .select("conteudo, created_at, tipo_midia")
+                .eq("whatsapp_id", c.whatsapp_numero)
+                .order("created_at", { ascending: false })
+                .limit(1);
+              return {
+                whatsapp_numero: c.whatsapp_numero,
+                bot_ativo: c.bot_ativo,
+                last_intercept: c.last_intercept,
+                nome_contato: c.nome_contato || c.nome || null,
+                canal: c.canal || null,
+                lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
+                lastMessageType: msgs?.[0]?.tipo_midia || "texto",
+                lastTime: msgs?.[0]?.created_at || undefined,
+                unread_count: c.unread_count || 0,
+                arquivado: c.arquivado || false,
+              };
+            })
+          );
+          setChats(prev => {
+            const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
+            enriched.forEach(ec => map.set(ec.whatsapp_numero, ec));
+            return Array.from(map.values());
+          });
+        }
+      } catch (err) {
+        console.error("[Atendimento] Exceção ao carregar arquivados:", err);
       }
     }
     loadArchived();
@@ -261,9 +276,10 @@ export default function Atendimento() {
   const saveContactName = async () => {
     if (!selectedChat) return;
     const trimmed = contactName.trim();
+    // Atualiza AMBAS as colunas para compatibilidade
     await supabase
       .from("controle_bot")
-      .update({ nome_contato: trimmed || null } as any)
+      .update({ nome_contato: trimmed || null, nome: trimmed || null } as any)
       .eq("whatsapp_numero", selectedChat);
     setChats((prev) =>
       prev.map((c) =>
