@@ -73,7 +73,8 @@ export default function Atendimento() {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("controle_bot").select("*");
+      // Load only active chats by default to save bandwidth
+      const { data } = await supabase.from("controle_bot").select("*").not("arquivado", "eq", true);
       if (data) {
         const enriched: Chat[] = await Promise.all(
           data.map(async (c) => {
@@ -103,6 +104,44 @@ export default function Atendimento() {
     }
     load();
   }, []);
+
+  // Fetch archived chats lazily when toggled
+  useEffect(() => {
+    if (!showArchived) return;
+    async function loadArchived() {
+      const { data } = await supabase.from("controle_bot").select("*").eq("arquivado", true);
+      if (data) {
+        const enriched: Chat[] = await Promise.all(
+          data.map(async (c) => {
+            const { data: msgs } = await supabase
+              .from("historico_mensagens")
+              .select("conteudo, created_at, tipo_midia")
+              .eq("whatsapp_id", c.whatsapp_numero)
+              .order("created_at", { ascending: false })
+              .limit(1);
+            return {
+              whatsapp_numero: c.whatsapp_numero,
+              bot_ativo: c.bot_ativo,
+              last_intercept: c.last_intercept,
+              nome_contato: c.nome_contato || null,
+              canal: (c as any).canal || null,
+              lastMessage: msgs?.[0]?.conteudo || "Sem mensagens",
+              lastMessageType: msgs?.[0]?.tipo_midia || "texto",
+              lastTime: msgs?.[0]?.created_at || undefined,
+              unread_count: (c as any).unread_count || 0,
+              arquivado: (c as any).arquivado || false,
+            };
+          })
+        );
+        setChats(prev => {
+          const map = new Map(prev.map(p => [p.whatsapp_numero, p]));
+          enriched.forEach(ec => map.set(ec.whatsapp_numero, ec));
+          return Array.from(map.values());
+        });
+      }
+    }
+    loadArchived();
+  }, [showArchived]);
 
   useEffect(() => {
     if (!selectedChat) return;
@@ -569,10 +608,16 @@ export default function Atendimento() {
           className="w-full border-white/[0.08] hover:bg-white/[0.05] text-muted-foreground hover:text-foreground"
           onClick={async () => {
             const novoStatus = !(currentChat.arquivado || false);
-            await supabase.from("controle_bot").update({ arquivado: novoStatus } as any).eq("whatsapp_numero", selectedChat);
-            setChats(prev => prev.map(c => c.whatsapp_numero === selectedChat ? { ...c, arquivado: novoStatus } : c));
-            if (novoStatus) setSelectedChat(null);
-            toast({ title: novoStatus ? "Conversa arquivada" : "Conversa retornada das arquivadas" });
+            try {
+              const { error } = await supabase.from("controle_bot").update({ arquivado: novoStatus } as any).eq("whatsapp_numero", selectedChat);
+              if (error) throw error;
+              setChats(prev => prev.map(c => c.whatsapp_numero === selectedChat ? { ...c, arquivado: novoStatus } : c));
+              if (novoStatus) setSelectedChat(null);
+              toast({ title: novoStatus ? "Conversa arquivada" : "Conversa retornada das arquivadas" });
+            } catch (err) {
+              console.error(err);
+              toast({ title: "Erro ao atualizar status de arquivamento", variant: "destructive" });
+            }
           }}
         >
           {currentChat.arquivado ? (
