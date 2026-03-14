@@ -83,9 +83,14 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
+  // Fix for pure Base64 rendering (Problem 1)
+  const imageSrc = src.startsWith("data:image") || src.startsWith("http") || src.startsWith("blob:") 
+    ? src 
+    : `data:image/jpeg;base64,${src}`;
+
   if (error) {
     return (
-      <a href={src} target="_blank" rel="noopener noreferrer"
+      <a href={imageSrc} target="_blank" rel="noopener noreferrer"
         className={cn(
           "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors",
           outgoing ? "bg-violet-500/20 hover:bg-violet-500/30" : "bg-white/[0.06] hover:bg-white/[0.1]"
@@ -107,12 +112,12 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
         )} />
       )}
       <img
-        src={src}
+        src={imageSrc}
         alt="Imagem"
         loading="lazy"
         onLoad={() => setLoaded(true)}
         onError={() => setError(true)}
-        onClick={() => window.open(src, "_blank")}
+        onClick={() => window.open(imageSrc, "_blank")}
         className={cn(
           "rounded-lg max-w-[300px] max-h-[280px] object-cover cursor-pointer transition-all hover:brightness-110 hover:shadow-lg",
           !loaded && "hidden"
@@ -120,7 +125,7 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
       />
       {loaded && (
         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <a href={src} target="_blank" rel="noopener noreferrer"
+          <a href={imageSrc} target="_blank" rel="noopener noreferrer"
             className="h-7 w-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5 text-white" />
@@ -250,6 +255,10 @@ function AudioMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
 function DocumentMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
   const ext = getFileExtension(src);
   const name = getFileName(src);
+  
+  const documentSrc = src.startsWith("data:application") || src.startsWith("http") || src.startsWith("blob:") 
+    ? src 
+    : `data:application/pdf;base64,${src}`;
 
   const extColorMap: Record<string, string> = {
     PDF: "text-red-400",
@@ -264,48 +273,67 @@ function DocumentMessage({ src, outgoing }: { src: string; outgoing: boolean }) 
   };
 
   return (
-    <a
-      href={src}
-      download={name}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={cn(
-        "flex items-center gap-3 px-3 py-2.5 rounded-lg min-w-[200px] max-w-[300px] transition-all group",
-        outgoing
-          ? "bg-violet-500/15 hover:bg-violet-500/25 border border-violet-400/10"
-          : "bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06]"
+    <div className="flex flex-col gap-2 min-w-[220px] max-w-[320px]">
+      {ext === "PDF" && (
+        <div className="rounded-lg overflow-hidden border border-white/[0.06] bg-black/20 relative">
+          <embed 
+            src={documentSrc} 
+            type="application/pdf" 
+            className="w-full h-[140px] pointer-events-none opacity-80"
+          />
+          <div className="absolute inset-0 bg-transparent flex items-center justify-center">
+            {/* Click blocking layer for the embed, clicking the embed itself directly inside chat restricts navigation */}
+            <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+               <ExternalLink className="h-5 w-5 text-white" />
+            </div>
+          </div>
+        </div>
       )}
-    >
-      {/* Icon */}
-      <div className={cn(
-        "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
-        outgoing ? "bg-violet-500/20" : "bg-white/[0.06]"
-      )}>
-        <FileText className={cn("h-5 w-5", extColorMap[ext] || "text-violet-400")} />
-      </div>
+      <a
+        href={documentSrc}
+        download={name}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn(
+          "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group",
+          outgoing
+            ? "bg-violet-500/15 hover:bg-violet-500/25 border border-violet-400/10"
+            : "bg-black/10 hover:bg-black/20 border border-white/[0.06] dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
+        )}
+      >
+        {/* Icon */}
+        <div className={cn(
+          "h-10 w-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm",
+          outgoing ? "bg-violet-500/20" : "bg-white/[0.06]"
+        )}>
+          <FileText className={cn("h-5 w-5", extColorMap[ext] || "text-foreground")} />
+        </div>
 
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <p className={cn(
-          "text-sm font-medium truncate",
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className={cn(
+            "text-sm font-semibold truncate",
+            outgoing ? "text-white" : "text-foreground"
+          )}>
+            {name}
+          </p>
+          <p className={cn(
+            "text-[10px] uppercase tracking-wider font-bold mt-0.5",
+            outgoing ? "text-violet-200/50" : "text-muted-foreground/50"
+          )}>
+            {ext} • Baixar Documento
+          </p>
+        </div>
+
+        {/* Download icon */}
+        <div className={cn(
+          "h-8 w-8 rounded-full flex items-center justify-center transition-all bg-white/[0.05] group-hover:bg-white/[0.15]",
           outgoing ? "text-white" : "text-foreground"
         )}>
-          {name}
-        </p>
-        <p className={cn(
-          "text-[10px] uppercase tracking-wider font-semibold",
-          outgoing ? "text-violet-200/50" : "text-muted-foreground/50"
-        )}>
-          {ext} • Toque para baixar
-        </p>
-      </div>
-
-      {/* Download icon */}
-      <Download className={cn(
-        "h-4 w-4 shrink-0 opacity-0 group-hover:opacity-70 transition-opacity",
-        outgoing ? "text-white" : "text-foreground"
-      )} />
-    </a>
+          <Download className="h-4 w-4 shrink-0 transition-opacity" />
+        </div>
+      </a>
+    </div>
   );
 }
 
