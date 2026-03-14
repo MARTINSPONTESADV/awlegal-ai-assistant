@@ -48,6 +48,7 @@ interface Mensagem {
   direcao: string | null;
   origem: string | null;
   tipo_midia: string | null;
+  nome?: string | null;
   created_at: string | null;
 }
 
@@ -149,10 +150,12 @@ export default function Atendimento() {
     const globalChannel = supabase
       .channel("todas-mensagens-realtime")
       .on("postgres_changes", {
-        event: "INSERT",
+        event: "*",
         schema: "public",
         table: "historico_mensagens",
       }, (payload) => {
+        if (payload.eventType === "DELETE") return;
+        
         const nova = payload.new as any;
         const remetente = nova.whatsapp_id;
         if (!remetente) return;
@@ -160,18 +163,30 @@ export default function Atendimento() {
         setChats((prev) =>
           prev.map((c) => {
             if (c.whatsapp_numero !== remetente) return c;
-            // Determina se é mensagem de entrada (do cliente) para incrementar unread
-            const isIncoming = nova.direcao === "entrada" || nova.origem === "cliente";
-            return {
-              ...c,
-              lastMessage: nova.conteudo || c.lastMessage,
-              lastMessageType: nova.tipo_midia || "texto",
-              lastTime: nova.created_at || c.lastTime,
-              // Só incrementa badge se o chat NÃO está selecionado E é mensagem incoming
-              unread_count: (isIncoming && selectedChat !== remetente)
-                ? (c.unread_count || 0) + 1
-                : c.unread_count,
-            };
+            
+            const novoNome = nova.nome && nova.nome.trim() !== "" ? nova.nome : c.nome_contato;
+            
+            if (payload.eventType === "INSERT") {
+              // Determina se é mensagem de entrada (do cliente) para incrementar unread
+              const isIncoming = nova.direcao === "entrada" || nova.origem === "cliente";
+              return {
+                ...c,
+                nome_contato: novoNome,
+                lastMessage: nova.conteudo || c.lastMessage,
+                lastMessageType: nova.tipo_midia || "texto",
+                lastTime: nova.created_at || c.lastTime,
+                // Só incrementa badge se o chat NÃO está selecionado E é mensagem incoming
+                unread_count: (isIncoming && selectedChat !== remetente)
+                  ? (c.unread_count || 0) + 1
+                  : c.unread_count,
+              };
+            } else if (payload.eventType === "UPDATE") {
+              return {
+                ...c,
+                nome_contato: novoNome,
+              };
+            }
+            return c;
           })
         );
       })
