@@ -357,11 +357,11 @@ export default function Atendimento() {
     const trimmed = contactName.trim();
     await supabase
       .from("controle_bot")
-      .update({ nome_contato: trimmed || null, nome: trimmed || null } as any)
+      .update({ nome_contato: trimmed || null })
       .eq("whatsapp_numero", selectedChat);
     setRawLeads((prev) =>
       prev.map((c: any) =>
-        c.whatsapp_numero === selectedChat ? { ...c, nome_contato: trimmed || null, nome: trimmed || null } : c
+        c.whatsapp_numero === selectedChat ? { ...c, nome_contato: trimmed || null } : c
       )
     );
     setEditingName(false);
@@ -642,35 +642,39 @@ export default function Atendimento() {
         {(currentChat.nome || currentChat.nome_contato) && (
           <p className="text-xs text-muted-foreground font-mono">{formatPhone(selectedChat || "")}</p>
         )}
-        <Badge
-          variant="outline"
-          className={cn(
-            "mt-2 text-xs",
-            currentChat.bot_ativo
-              ? "border-violet-400/40 text-violet-300 bg-violet-500/10"
-              : "border-amber-400/40 text-amber-300 bg-amber-500/10"
-          )}
-        >
-          {currentChat.bot_ativo ? "🤖 Bot Ativo" : "👤 Humano"}
-        </Badge>
+        {canal !== "martins_pontes" && (
+          <Badge
+            variant="outline"
+            className={cn(
+              "mt-2 text-xs",
+              currentChat.bot_ativo
+                ? "border-violet-400/40 text-violet-300 bg-violet-500/10"
+                : "border-amber-400/40 text-amber-300 bg-amber-500/10"
+            )}
+          >
+            {currentChat.bot_ativo ? "🤖 Bot Ativo" : "👤 Humano"}
+          </Badge>
+        )}
       </div>
 
       <div className="space-y-2">
-        <Button
-          onClick={toggleBot}
-          disabled={loadingBot}
-          variant={currentChat.bot_ativo ? "destructive" : "default"}
-          className={cn(
-            "w-full font-bold text-sm py-5",
-            !currentChat.bot_ativo && "bg-violet-600 hover:bg-violet-700"
-          )}
-        >
-          {currentChat.bot_ativo ? (
-            <><BotOff className="h-4 w-4 mr-2" /> TRAVAR ROBÔ</>
-          ) : (
-            <><Bot className="h-4 w-4 mr-2" /> REATIVAR ROBÔ</>
-          )}
-        </Button>
+        {canal !== "martins_pontes" && (
+          <Button
+            onClick={toggleBot}
+            disabled={loadingBot}
+            variant={currentChat.bot_ativo ? "destructive" : "default"}
+            className={cn(
+              "w-full font-bold text-sm py-5",
+              !currentChat.bot_ativo && "bg-violet-600 hover:bg-violet-700"
+            )}
+          >
+            {currentChat.bot_ativo ? (
+              <><BotOff className="h-4 w-4 mr-2" /> TRAVAR ROBÔ</>
+            ) : (
+              <><Bot className="h-4 w-4 mr-2" /> REATIVAR ROBÔ</>
+            )}
+          </Button>
+        )}
 
         <Button
           variant="outline"
@@ -700,10 +704,12 @@ export default function Atendimento() {
       <div className="border-t border-white/[0.06] pt-4 space-y-3">
         <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Informações</h4>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground text-xs">Status Bot</span>
-            <Badge variant="secondary" className="text-xs">{currentChat.bot_ativo ? "Ativo" : "Pausado"}</Badge>
-          </div>
+          {canal !== "martins_pontes" && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-xs">Status Bot</span>
+              <Badge variant="secondary" className="text-xs">{currentChat.bot_ativo ? "Ativo" : "Pausado"}</Badge>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-muted-foreground text-xs">Canal</span>
             <Badge variant="outline" className="text-xs capitalize">

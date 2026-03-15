@@ -329,21 +329,6 @@ function DocumentMessage({ src, outgoing }: { src: string; outgoing: boolean }) 
 
   return (
     <div className="flex flex-col gap-2 min-w-[220px] max-w-[320px]">
-      {ext === "PDF" && (
-        <div className="rounded-lg overflow-hidden border border-white/[0.06] bg-black/20 relative">
-          <embed 
-            src={documentSrc} 
-            type="application/pdf" 
-            className="w-full h-[140px] pointer-events-none opacity-80"
-          />
-          <div className="absolute inset-0 bg-transparent flex items-center justify-center">
-            {/* Click blocking layer for the embed, clicking the embed itself directly inside chat restricts navigation */}
-            <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-               <ExternalLink className="h-5 w-5 text-white" />
-            </div>
-          </div>
-        </div>
-      )}
       <a
         href={documentSrc}
         download={name}
