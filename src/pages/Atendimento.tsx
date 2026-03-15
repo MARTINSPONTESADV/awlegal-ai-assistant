@@ -167,20 +167,21 @@ export default function Atendimento() {
         const matchCanal = canal === "resolva_ja"
           ? !c.canal || c.canal === "resolva_ja"
           : c.canal === "martins_pontes";
-        return matchSearch && matchCanal;
+        const matchArchived = showArchived ? c.arquivado === true : !c.arquivado;
+        return matchSearch && matchCanal && matchArchived;
       })
       .sort((a: any, b: any) => {
         const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
         const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
         return timeB - timeA;
       });
-  }, [conversasComputadas, searchTerm, canal]);
+  }, [conversasComputadas, searchTerm, canal, showArchived]);
 
   // ── Carrega mensagens do chat selecionado ──
   useEffect(() => {
     if (!selectedChat) return;
     async function loadMsgs() {
-      let msgQuery = supabase
+      let msgQuery: any = supabase
         .from("historico_mensagens")
         .select("*")
         .eq("whatsapp_id", selectedChat)
