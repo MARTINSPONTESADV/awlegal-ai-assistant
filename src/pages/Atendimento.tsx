@@ -174,11 +174,17 @@ export default function Atendimento() {
   useEffect(() => {
     if (!selectedChat) return;
     async function loadMsgs() {
-      const { data } = await supabase
+      const msgQuery = supabase
         .from("historico_mensagens")
         .select("*")
         .eq("whatsapp_id", selectedChat)
         .order("created_at", { ascending: true });
+      if (canal === "martins_pontes") {
+        msgQuery.eq("canal", "martins_pontes");
+      } else {
+        msgQuery.or("canal.is.null,canal.eq.resolva_ja");
+      }
+      const { data } = await msgQuery;
       if (data) setMensagens(data);
     }
     loadMsgs();
