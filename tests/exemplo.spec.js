@@ -31,8 +31,9 @@ test.describe('Carregamento Básico', () => {
     const erros = [];
     page.on('pageerror', err => erros.push(err.message));
 
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    // Timeout maior para o primeiro teste (servidor pode estar aquecendo)
+    await page.goto('/', { timeout: 60_000 });
+    await page.waitForLoadState('networkidle', { timeout: 60_000 });
 
     // Página não deve estar em branco
     const body = await page.locator('body').innerText();
@@ -147,8 +148,9 @@ test.describe('Aba Atendimento', () => {
     await page.goto('/atendimento');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('Resolva Já')).toBeVisible();
-    await expect(page.getByText('Martins Pontes')).toBeVisible();
+    // Usa getByRole para ser específico — evita conflito com outros textos na página
+    await expect(page.getByRole('button', { name: 'Resolva Já' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Martins Pontes' })).toBeVisible();
   });
 
   test('3.3 — trocar de canal não quebra a página', async ({ page }) => {
@@ -157,19 +159,19 @@ test.describe('Aba Atendimento', () => {
     await page.waitForTimeout(2000);
 
     // Troca para Martins Pontes
-    await page.getByText('Martins Pontes').click();
+    await page.getByRole('button', { name: 'Martins Pontes' }).click();
     await page.waitForTimeout(1000);
 
     await page.screenshot({ path: 'tests/screenshots/05-aba-mp.png', fullPage: true });
 
     // A aba deve continuar visível e responsiva
-    await expect(page.getByText('Martins Pontes')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Martins Pontes' })).toBeVisible();
     await expect(page.locator('#root')).not.toBeEmpty();
 
     // Volta para Resolva Já
-    await page.getByText('Resolva Já').click();
+    await page.getByRole('button', { name: 'Resolva Já' }).click();
     await page.waitForTimeout(500);
-    await expect(page.getByText('Resolva Já')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resolva Já' })).toBeVisible();
   });
 
   test('3.4 — busca filtra contatos (sem resultado)', async ({ page }) => {
@@ -178,16 +180,17 @@ test.describe('Aba Atendimento', () => {
     await page.waitForTimeout(2000);
 
     // Digita termo que não existe
-    const busca = page.locator('input[placeholder*="uscar"]').first();
+    const busca = page.locator('input[placeholder="Buscar conversa..."]').first();
+    await busca.waitFor({ state: 'visible', timeout: 10_000 });
     await busca.fill('zzzzinexistente999');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
     // Deve mostrar "Nenhuma conversa encontrada"
-    await expect(page.getByText(/nenhuma conversa/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/nenhuma conversa/i)).toBeVisible({ timeout: 8000 });
 
     // Limpa a busca — lista volta
     await busca.clear();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(800);
     await expect(page.getByText(/nenhuma conversa/i)).not.toBeVisible();
 
     await page.screenshot({ path: 'tests/screenshots/06-busca.png', fullPage: true });
@@ -221,19 +224,21 @@ test.describe('Aba Atendimento', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
-    // Procura o botão de arquivar pela title ou aria
-    const btnArchive = page.locator('button[title*="rquiv"]').first();
-    const existe = await btnArchive.isVisible().catch(() => false);
+    // O botão muda de title ao ser clicado: "Ver arquivadas" ↔ "Ver conversas ativas"
+    const btnIr = page.locator('button[title="Ver conversas arquivadas"]').first();
+    const existe = await btnIr.isVisible().catch(() => false);
 
     if (existe) {
-      await btnArchive.click();
+      await btnIr.click();
       await page.waitForTimeout(500);
       await page.screenshot({ path: 'tests/screenshots/08-arquivados.png', fullPage: true });
-      // Volta ao modo normal
-      await btnArchive.click();
+
+      // Volta ao modo normal (o título muda após clicar)
+      const btnVoltar = page.locator('button[title="Ver conversas ativas"]').first();
+      await btnVoltar.click();
       await page.waitForTimeout(500);
     } else {
-      console.log('Botão de arquivados não encontrado com seletor atual');
+      console.log('Botão de arquivados não encontrado — verificar se title está correto');
     }
 
     // Página não deve ter quebrado
