@@ -121,7 +121,6 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
       <img
         src={imageSrc}
         alt="Imagem"
-        loading="lazy"
         onLoad={() => setLoaded(true)}
         onError={() => setError(true)}
         onClick={() => window.open(imageSrc, "_blank")}
