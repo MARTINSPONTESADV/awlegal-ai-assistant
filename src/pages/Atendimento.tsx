@@ -90,12 +90,18 @@ export default function Atendimento() {
         const enriched = await Promise.all(
           data.map(async (lead: any) => {
             try {
-              const { data: msgs } = await supabase
+              let previewQuery = supabase
                 .from("historico_mensagens")
                 .select("conteudo, created_at, tipo_midia")
                 .eq("whatsapp_id", lead.whatsapp_numero)
                 .order("created_at", { ascending: false })
                 .limit(1);
+              if (lead.canal === "martins_pontes") {
+                previewQuery = previewQuery.eq("canal", "martins_pontes");
+              } else {
+                previewQuery = previewQuery.or("canal.is.null,canal.eq.resolva_ja");
+              }
+              const { data: msgs } = await previewQuery;
               return {
                 ...lead,
                 historico_mensagens: msgs || [],
@@ -208,7 +214,7 @@ export default function Atendimento() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [selectedChat]);
+  }, [selectedChat, canal]);
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -414,7 +420,7 @@ export default function Atendimento() {
   const canalSelector = (
     <div className="flex rounded-xl overflow-hidden border border-white/[0.08] shrink-0">
       <button
-        onClick={() => setCanal("resolva_ja")}
+        onClick={() => { setCanal("resolva_ja"); setSelectedChat(null); }}
         className={cn(
           "flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-all",
           canal === "resolva_ja"
@@ -426,7 +432,7 @@ export default function Atendimento() {
         Resolva Já
       </button>
       <button
-        onClick={() => setCanal("martins_pontes")}
+        onClick={() => { setCanal("martins_pontes"); setSelectedChat(null); }}
         className={cn(
           "flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-all",
           canal === "martins_pontes"
