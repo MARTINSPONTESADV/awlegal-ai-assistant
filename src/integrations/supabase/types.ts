@@ -291,21 +291,33 @@ export type Database = {
       }
       controle_bot: {
         Row: {
+          arquivado: boolean | null
           bot_ativo: boolean | null
+          canal: string | null
           last_intercept: string | null
+          nome: string | null
           nome_contato: string | null
+          unread_count: number | null
           whatsapp_numero: string
         }
         Insert: {
+          arquivado?: boolean | null
           bot_ativo?: boolean | null
+          canal?: string | null
           last_intercept?: string | null
+          nome?: string | null
           nome_contato?: string | null
+          unread_count?: number | null
           whatsapp_numero: string
         }
         Update: {
+          arquivado?: boolean | null
           bot_ativo?: boolean | null
+          canal?: string | null
           last_intercept?: string | null
+          nome?: string | null
           nome_contato?: string | null
+          unread_count?: number | null
           whatsapp_numero?: string
         }
         Relationships: []

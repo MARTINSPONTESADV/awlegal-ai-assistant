@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useChats } from "@/hooks/useChats";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -52,8 +53,7 @@ export default function Atendimento() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
-  // ── Estado Base: rawLeads armazena os dados BRUTOS do Supabase ──
-  const [rawLeads, setRawLeads] = useState<any[]>([]);
+  // ── Estado da UI ──
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [newMsg, setNewMsg] = useState("");
@@ -69,106 +69,8 @@ export default function Atendimento() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // ── Fetch: carrega dados brutos de controle_bot (SEM JOIN, SEM coluna arquivado) ──
-  useEffect(() => {
-    async function load() {
-      try {
-        // Query limpa: busca TODOS os leads (a coluna arquivado não existe nessa tabela)
-        const { data, error } = await supabase.from("controle_bot").select("*");
-        if (error) {
-          console.error("[Atendimento] Erro ao carregar controle_bot:", error);
-          setRawLeads([]);
-          return;
-        }
-        if (!data || data.length === 0) {
-          console.warn("[Atendimento] Nenhum lead na controle_bot.");
-          setRawLeads([]);
-          return;
-        }
-
-        // Enriquece cada lead com a última mensagem (query separada, sem FK)
-        const enriched = await Promise.all(
-          data.map(async (lead: any) => {
-            try {
-              const { data: msgs } = await supabase
-                .from("historico_mensagens")
-                .select("conteudo, created_at, tipo_midia")
-                .eq("whatsapp_id", lead.whatsapp_numero)
-                .order("created_at", { ascending: false })
-                .limit(1);
-              return {
-                ...lead,
-                historico_mensagens: msgs || [],
-              };
-            } catch {
-              return { ...lead, historico_mensagens: [] };
-            }
-          })
-        );
-        console.log("[Atendimento] Leads carregados:", enriched.length);
-        setRawLeads(enriched);
-      } catch (err) {
-        console.error("[Atendimento] Exceção fatal:", err);
-        setRawLeads([]);
-      }
-    }
-    load();
-  }, []);
-
-  // ── useMemo: Computed State SEGURO para renderização ──
-  const conversasComputadas = useMemo(() => {
-    if (!rawLeads || !Array.isArray(rawLeads)) return [];
-    return rawLeads.map((lead: any) => {
-      const mensagem = lead.historico_mensagens?.[0]?.conteudo || "Iniciou conversa";
-      const tipo = lead.historico_mensagens?.[0]?.tipo_midia || "texto";
-      const lastTime = lead.historico_mensagens?.[0]?.created_at || undefined;
-      // Fallback triplo de segurança para o nome
-      const nomeExibicao = lead.nome || lead.nome_contato || formatPhone(lead.whatsapp_numero || "") || "Desconhecido";
-
-      // Prévia da mensagem
-      const ultimaMensagem = tipo === "audio"
-        ? "🎵 Áudio"
-        : tipo === "image"
-          ? "📷 Imagem"
-          : tipo === "document"
-            ? "📄 Documento"
-            : (mensagem && mensagem.length > 35
-                ? mensagem.substring(0, 35) + "..."
-                : mensagem);
-
-      return {
-        ...lead,
-        nomeExibicao,
-        ultimaMensagem,
-        tipoMidia: tipo,
-        lastTime,
-        // Normalização de campos seguros
-        whatsapp_numero: lead.whatsapp_numero || "",
-        bot_ativo: lead.bot_ativo ?? null,
-        arquivado: lead.arquivado || false,
-        canal: lead.canal || null,
-        unread_count: lead.unread_count || 0,
-      };
-    });
-  }, [rawLeads]);
-
-  // ── filteredChats: filtragem e ordenação sobre o computed ──
-  const filteredChats = useMemo(() => {
-    return conversasComputadas
-      .filter((c: any) => {
-        const matchSearch = (c.whatsapp_numero || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (c.nomeExibicao || "").toLowerCase().includes(searchTerm.toLowerCase());
-        const matchCanal = canal === "resolva_ja"
-          ? !c.canal || c.canal === "resolva_ja"
-          : c.canal === "martins_pontes";
-        return matchSearch && matchCanal;
-      })
-      .sort((a: any, b: any) => {
-        const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
-        const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
-        return timeB - timeA;
-      });
-  }, [conversasComputadas, searchTerm, canal]);
+  // ── Hook: dados de contatos, realtime e filtragem ──
+  const { conversasComputadas, filteredChats, updateLead } = useChats(canal, searchTerm, selectedChat);
 
   // ── Carrega mensagens do chat selecionado ──
   useEffect(() => {
@@ -210,68 +112,6 @@ export default function Atendimento() {
     }
   }, [mensagens]);
 
-  // ── Realtime GLOBAL: atualiza lastMessage de QUALQUER contato ──
-  useEffect(() => {
-    const globalChannel = supabase
-      .channel("todas-mensagens-realtime")
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "historico_mensagens",
-      }, (payload) => {
-        const nova = payload.new as any;
-        const remetente = nova.whatsapp_id;
-        if (!remetente) return;
-
-        setRawLeads((prev) =>
-          prev.map((c: any) => {
-            if (c.whatsapp_numero !== remetente) return c;
-            const isIncoming = nova.direcao === "entrada" || nova.origem === "cliente";
-            // Injeta a nova mensagem no array aninhado para o useMemo recomputar
-            return {
-              ...c,
-              historico_mensagens: [{ conteudo: nova.conteudo, tipo_midia: nova.tipo_midia, created_at: nova.created_at }],
-              unread_count: (isIncoming && selectedChat !== remetente)
-                ? (c.unread_count || 0) + 1
-                : c.unread_count,
-            };
-          })
-        );
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(globalChannel); };
-  }, [selectedChat]);
-
-  // ── Realtime CONTROLE_BOT: escuta atualizações de perfil ──
-  useEffect(() => {
-    const controleChannel = supabase
-      .channel("controle-bot-realtime")
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "controle_bot",
-      }, (payload) => {
-        const atualizado = payload.new as any;
-
-        setRawLeads((prev) =>
-          prev.map((c: any) => {
-            if (c.whatsapp_numero !== atualizado.whatsapp_numero) return c;
-            return {
-              ...c,
-              nome: atualizado.nome || atualizado.nome_contato || c.nome,
-              nome_contato: atualizado.nome_contato || atualizado.nome || c.nome_contato,
-              arquivado: atualizado.arquivado ?? c.arquivado,
-              bot_ativo: atualizado.bot_ativo ?? c.bot_ativo,
-            };
-          })
-        );
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(controleChannel); };
-  }, []);
-
   const currentChat = conversasComputadas.find((c: any) => c.whatsapp_numero === selectedChat);
 
   useEffect(() => {
@@ -286,13 +126,9 @@ export default function Atendimento() {
     const trimmed = contactName.trim();
     await supabase
       .from("controle_bot")
-      .update({ nome_contato: trimmed || null, nome: trimmed || null } as any)
+      .update({ nome_contato: trimmed || null, nome: trimmed || null })
       .eq("whatsapp_numero", selectedChat);
-    setRawLeads((prev) =>
-      prev.map((c: any) =>
-        c.whatsapp_numero === selectedChat ? { ...c, nome_contato: trimmed || null, nome: trimmed || null } : c
-      )
-    );
+    updateLead(selectedChat, { nome_contato: trimmed || null, nome: trimmed || null });
     setEditingName(false);
     toast({ title: trimmed ? `Contato renomeado para "${trimmed}"` : "Nome removido" });
   };
@@ -301,11 +137,7 @@ export default function Atendimento() {
     if (!currentChat || !selectedChat) return;
     const previousVal = currentChat.bot_ativo;
     const newVal = !previousVal;
-    setRawLeads((prev) =>
-      prev.map((c: any) =>
-        c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: newVal } : c
-      )
-    );
+    updateLead(selectedChat, { bot_ativo: newVal });
 
     try {
       const { error } = await supabase
@@ -320,11 +152,7 @@ export default function Atendimento() {
         description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
       });
     } catch {
-      setRawLeads((prev) =>
-        prev.map((c: any) =>
-          c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: previousVal } : c
-        )
-      );
+      updateLead(selectedChat, { bot_ativo: previousVal });
       toast({ title: "Erro ao alterar status do robô", variant: "destructive" });
     }
   };
@@ -336,7 +164,7 @@ export default function Atendimento() {
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo: "text", numero: selectedChat, mensagem: newMsg }),
+        body: JSON.stringify({ tipo: "text", numero: selectedChat, mensagem: newMsg, canal }),
       });
       if (!response.ok) throw new Error("Webhook error");
       setNewMsg("");
@@ -370,7 +198,7 @@ export default function Atendimento() {
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo: "audio", numero: selectedChat, audioUrl: publicUrl, options: { ptt: true } }),
+        body: JSON.stringify({ tipo: "audio", numero: selectedChat, audioUrl: publicUrl, canal, options: { ptt: true } }),
       });
       if (!response.ok) throw new Error(`Webhook HTTP ${response.status}`);
       toast({ title: "Áudio enviado!" });
@@ -387,15 +215,11 @@ export default function Atendimento() {
   const markAsRead = async (numero: string) => {
     supabase
       .from("controle_bot")
-      .update({ unread_count: 0 } as any)
+      .update({ unread_count: 0 })
       .eq("whatsapp_numero", numero)
       .then(() => {});
 
-    setRawLeads((prev) =>
-      prev.map((c: any) =>
-        c.whatsapp_numero === numero ? { ...c, unread_count: 0 } : c
-      )
-    );
+    updateLead(numero, { unread_count: 0 });
   };
 
   const handleSelectChat = (numero: string) => {
@@ -607,9 +431,9 @@ export default function Atendimento() {
           onClick={async () => {
             const novoStatus = !(currentChat.arquivado || false);
             try {
-              const { error } = await supabase.from("controle_bot").update({ arquivado: novoStatus } as any).eq("whatsapp_numero", selectedChat);
+              const { error } = await supabase.from("controle_bot").update({ arquivado: novoStatus }).eq("whatsapp_numero", selectedChat);
               if (error) throw error;
-              setRawLeads(prev => prev.map((c: any) => c.whatsapp_numero === selectedChat ? { ...c, arquivado: novoStatus } : c));
+              updateLead(selectedChat!, { arquivado: novoStatus });
               if (novoStatus) setSelectedChat(null);
               toast({ title: novoStatus ? "Conversa arquivada" : "Conversa retornada das arquivadas" });
             } catch (err) {
