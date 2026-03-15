@@ -147,43 +147,92 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
 // ══════════════════════════════════════════
 function AudioMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const rafRef = useRef<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
 
+  // Sync duration from the audio element (handles data URIs that load before useEffect)
+  const syncDuration = (audio: HTMLAudioElement) => {
+    if (audio.duration && isFinite(audio.duration)) {
+      setDuration(audio.duration);
+    }
+  };
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const onTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
-      setProgress(audio.duration ? (audio.currentTime / audio.duration) * 100 : 0);
-    };
-    const onLoadedMetadata = () => setDuration(audio.duration);
-    const onEnded = () => { setIsPlaying(false); setProgress(0); setCurrentTime(0); };
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    // If metadata already loaded (data URI), grab duration immediately
+    syncDuration(audio);
 
-    audio.addEventListener("timeupdate", onTimeUpdate);
-    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    const onDurationChange = () => syncDuration(audio);
+    const onEnded = () => {
+      setIsPlaying(false);
+      setProgress(0);
+      setCurrentTime(0);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => {
+      setIsPlaying(false);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+
+    audio.addEventListener("durationchange", onDurationChange);
+    audio.addEventListener("loadedmetadata", onDurationChange);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
 
     return () => {
-      audio.removeEventListener("timeupdate", onTimeUpdate);
-      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("durationchange", onDurationChange);
+      audio.removeEventListener("loadedmetadata", onDurationChange);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
+
+  // requestAnimationFrame loop — updates progress every frame while playing
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      const tick = () => {
+        const dur = audio.duration;
+        const cur = audio.currentTime;
+        setCurrentTime(cur);
+        setProgress(dur && isFinite(dur) ? (cur / dur) * 100 : 0);
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    }
+
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [isPlaying]);
 
   const togglePlay = () => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (isPlaying) { audio.pause(); } else { audio.play(); }
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
+    }
   };
 
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
