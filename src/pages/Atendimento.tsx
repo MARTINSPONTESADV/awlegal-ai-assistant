@@ -111,8 +111,44 @@ export default function Atendimento() {
             }
           })
         );
-        console.log("[Atendimento] Leads carregados:", enriched.length);
-        setRawLeads(enriched);
+        // ── Carrega contatos MP de historico_mensagens (fonte de verdade da aba MP) ──
+        // Necessário porque um número pode estar em controle_bot como "resolva_ja"
+        // mas também mandar mensagens para o canal Martins Pontes.
+        const { data: mpRaw } = await supabase
+          .from("historico_mensagens")
+          .select("whatsapp_id, conteudo, tipo_midia, created_at")
+          .eq("canal", "martins_pontes")
+          .order("created_at", { ascending: false });
+
+        const mpMap = new Map<string, any>();
+        for (const msg of (mpRaw || [])) {
+          if (!msg.whatsapp_id || mpMap.has(msg.whatsapp_id)) continue;
+          mpMap.set(msg.whatsapp_id, msg);
+        }
+
+        const mpLeads = Array.from(mpMap.entries()).map(([phone, lastMsg]) => {
+          const cb = enriched.find((l: any) => l.whatsapp_numero === phone);
+          return {
+            ...(cb || {}),
+            whatsapp_numero: phone,
+            canal: "martins_pontes",
+            bot_ativo: cb?.bot_ativo ?? false,
+            arquivado: cb?.arquivado ?? false,
+            historico_mensagens: [lastMsg],
+          };
+        });
+
+        // Mescla deduplicando por (whatsapp_numero + canal)
+        const seen = new Set<string>();
+        const combined = [...enriched, ...mpLeads].filter((l: any) => {
+          const key = `${l.whatsapp_numero}||${l.canal ?? "null"}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        console.log("[Atendimento] Leads carregados:", combined.length, "(RJ:", enriched.length, "MP:", mpLeads.length, ")");
+        setRawLeads(combined);
       } catch (err) {
         console.error("[Atendimento] Exceção fatal:", err);
         setRawLeads([]);
@@ -236,11 +272,33 @@ export default function Atendimento() {
         const remetente = nova.whatsapp_id;
         if (!remetente) return;
 
-        setRawLeads((prev) =>
-          prev.map((c: any) => {
+        setRawLeads((prev) => {
+          const isIncoming = nova.direcao === "entrada" || nova.origem === "cliente";
+          const novaCanal = nova.canal || null;
+
+          // Verifica se já existe entrada para esse contato+canal
+          const jaExisteNoCanal = prev.some(
+            (c: any) => c.whatsapp_numero === remetente && (c.canal ?? null) === novaCanal
+          );
+
+          // Se é nova mensagem MP de contato que ainda não está na lista, adiciona
+          if (!jaExisteNoCanal && novaCanal === "martins_pontes") {
+            const cbEntry = prev.find((c: any) => c.whatsapp_numero === remetente);
+            return [...prev, {
+              ...(cbEntry || {}),
+              whatsapp_numero: remetente,
+              canal: "martins_pontes",
+              bot_ativo: cbEntry?.bot_ativo ?? false,
+              arquivado: cbEntry?.arquivado ?? false,
+              historico_mensagens: [{ conteudo: nova.conteudo, tipo_midia: nova.tipo_midia, created_at: nova.created_at }],
+              unread_count: isIncoming ? 1 : 0,
+            }];
+          }
+
+          // Caso normal: atualiza preview do contato existente (mesma lógica original)
+          return prev.map((c: any) => {
             if (c.whatsapp_numero !== remetente) return c;
-            const isIncoming = nova.direcao === "entrada" || nova.origem === "cliente";
-            // Injeta a nova mensagem no array aninhado para o useMemo recomputar
+            if ((c.canal ?? null) !== novaCanal) return c; // não polui canal errado
             return {
               ...c,
               historico_mensagens: [{ conteudo: nova.conteudo, tipo_midia: nova.tipo_midia, created_at: nova.created_at }],
@@ -248,8 +306,8 @@ export default function Atendimento() {
                 ? (c.unread_count || 0) + 1
                 : c.unread_count,
             };
-          })
-        );
+          });
+        });
       })
       .subscribe();
 
