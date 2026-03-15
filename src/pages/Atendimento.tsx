@@ -427,6 +427,34 @@ export default function Atendimento() {
 
         <Button
           variant="outline"
+          className={cn(
+            "w-full border-white/[0.08] hover:bg-white/[0.05] text-xs",
+            currentChat.canal === "martins_pontes"
+              ? "text-violet-300 hover:text-violet-200"
+              : "text-cyan-300 hover:text-cyan-200"
+          )}
+          onClick={async () => {
+            const novoCanal = currentChat.canal === "martins_pontes" ? "resolva_ja" : "martins_pontes";
+            try {
+              const { error } = await supabase.from("controle_bot").update({ canal: novoCanal }).eq("whatsapp_numero", selectedChat);
+              if (error) throw error;
+              updateLead(selectedChat!, { canal: novoCanal });
+              setSelectedChat(null);
+              toast({ title: `Contato movido para ${novoCanal === "resolva_ja" ? "Resolva Já" : "Martins Pontes"}` });
+            } catch {
+              toast({ title: "Erro ao mover contato", variant: "destructive" });
+            }
+          }}
+        >
+          {currentChat.canal === "martins_pontes" ? (
+            <><Zap className="h-3.5 w-3.5 mr-2" /> Mover para Resolva Já</>
+          ) : (
+            <><Building2 className="h-3.5 w-3.5 mr-2" /> Mover para Martins Pontes</>
+          )}
+        </Button>
+
+        <Button
+          variant="outline"
           className="w-full border-white/[0.08] hover:bg-white/[0.05] text-muted-foreground hover:text-foreground"
           onClick={async () => {
             const novoStatus = !(currentChat.arquivado || false);
