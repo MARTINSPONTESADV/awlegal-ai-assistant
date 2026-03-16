@@ -31,10 +31,11 @@ type Canal = "resolva_ja" | "martins_pontes";
 // ── FORA DO COMPONENTE: funções puras sem problema de hoisting ──
 function formatPhone(id: string): string {
   if (!id) return "Desconhecido";
-  if (id.length === 13) return `+${id.slice(0, 2)} (${id.slice(2, 4)}) ${id.slice(4, 5)} ${id.slice(5, 9)}-${id.slice(9)}`;
-  if (id.length === 11) return `(${id.slice(0, 2)}) ${id.slice(2, 3)} ${id.slice(3, 7)}-${id.slice(7)}`;
-  if (id.length === 10) return `(${id.slice(0, 2)}) ${id.slice(2, 6)}-${id.slice(6)}`;
-  return id;
+  const num = id.replace(/@s\.whatsapp\.net$/, "").replace(/@lid$/, "").replace(/@c\.us$/, "");
+  if (num.length === 13) return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 5)} ${num.slice(5, 9)}-${num.slice(9)}`;
+  if (num.length === 11) return `(${num.slice(0, 2)}) ${num.slice(2, 3)} ${num.slice(3, 7)}-${num.slice(7)}`;
+  if (num.length === 10) return `(${num.slice(0, 2)}) ${num.slice(2, 6)}-${num.slice(6)}`;
+  return num;
 }
 
 interface Mensagem {
@@ -208,7 +209,8 @@ export default function Atendimento() {
           ? !c.canal || c.canal === "resolva_ja"
           : c.canal === "martins_pontes";
         const matchArchived = showArchived ? c.arquivado === true : !c.arquivado;
-        return matchSearch && matchCanal && matchArchived;
+        const isLid = (c.whatsapp_numero || "").endsWith("@lid");
+        return matchSearch && matchCanal && matchArchived && !isLid;
       })
       .sort((a: any, b: any) => {
         const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
@@ -303,8 +305,15 @@ export default function Atendimento() {
           return prev.map((c: any) => {
             if (c.whatsapp_numero !== remetente) return c;
             if ((c.canal ?? null) !== novaCanal) return c; // não polui canal errado
+            // Se contato estava arquivado e mandou nova mensagem, desarquiva automaticamente
+            const deveDesarquivar = isIncoming && c.arquivado;
+            if (deveDesarquivar) {
+              supabase.from("controle_bot").update({ arquivado: false } as any)
+                .eq("whatsapp_numero", remetente);
+            }
             return {
               ...c,
+              arquivado: deveDesarquivar ? false : c.arquivado,
               historico_mensagens: [{ conteudo: nova.conteudo, tipo_midia: nova.tipo_midia, created_at: nova.created_at }],
               unread_count: (isIncoming && selectedChat !== remetente)
                 ? (c.unread_count || 0) + 1
