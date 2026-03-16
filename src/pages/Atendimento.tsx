@@ -399,6 +399,15 @@ export default function Atendimento() {
 
       if (error) throw error;
 
+      // Quando reativar o bot, limpar também o Redis block (TTL 24h deixado por "equipe ResolvaJá chegou")
+      if (newVal) {
+        fetch("https://awlegaltech-n8n.cloudfy.live/webhook/reativar-bot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ numero: selectedChat }),
+        }).catch(() => {}); // best-effort, não bloqueia o fluxo
+      }
+
       toast({
         title: newVal ? "Robô Ativado" : "Robô Pausado — Humano Assumiu",
         description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
