@@ -68,6 +68,7 @@ export default function Atendimento() {
   const [showArchived, setShowArchived] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -459,7 +460,8 @@ export default function Atendimento() {
     try {
       const tipo = attachedFile.type.startsWith("image/") ? "image" : "document";
       const safeName = attachedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const filename = `${selectedChat}/${Date.now()}_${safeName}`;
+      const safeFolder = selectedChat.replace(/[^a-zA-Z0-9-]/g, "_");
+      const filename = `${safeFolder}/${Date.now()}_${safeName}`;
       const { error: uploadError } = await supabase.storage
         .from("chat-media")
         .upload(filename, attachedFile, { contentType: attachedFile.type, cacheControl: "3600", upsert: false });
@@ -899,44 +901,61 @@ export default function Atendimento() {
                 </div>
               )}
               <div className="flex items-center gap-2 sm:gap-3 max-w-3xl mx-auto">
+                {/* Hidden file input — opened via <label> below (works em mobile sem duplo clique) */}
                 <input
+                  id="file-attach-input"
                   ref={fileInputRef}
                   type="file"
                   accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
                   className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) { setAttachedFile(f); setNewMsg(""); } e.target.value = ""; }}
                 />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 h-11 w-11 text-muted-foreground hover:text-foreground"
-                  onClick={() => fileInputRef.current?.click()}
+
+                {/* Paperclip — visível apenas fora da gravação */}
+                {!isRecordingAudio && (
+                  <label
+                    htmlFor="file-attach-input"
+                    className={cn(
+                      "shrink-0 h-11 w-11 flex items-center justify-center rounded-md cursor-pointer text-muted-foreground hover:text-foreground transition-colors",
+                      (sending || uploadingFile) && "pointer-events-none opacity-40"
+                    )}
+                    title="Anexar arquivo"
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </label>
+                )}
+
+                <AudioRecorder
+                  onSend={handleAudioSend}
                   disabled={sending || uploadingFile}
-                  title="Anexar arquivo"
-                >
-                  <Paperclip className="h-5 w-5" />
-                </Button>
-                <AudioRecorder onSend={handleAudioSend} disabled={sending || uploadingFile} />
-                <Input
-                  placeholder="Digite uma mensagem..."
-                  value={newMsg}
-                  onChange={(e) => { setNewMsg(e.target.value); if (e.target.value) setAttachedFile(null); }}
-                  onKeyDown={(e) => e.key === "Enter" && (attachedFile ? handleFileSend() : sendMessage())}
-                  className="flex-1 bg-white/[0.04] border-white/[0.08] focus-visible:ring-violet-400/40 h-11"
-                  disabled={sending || uploadingFile}
+                  onRecordingChange={setIsRecordingAudio}
                 />
-                <Button
-                  onClick={attachedFile ? handleFileSend : sendMessage}
-                  size="icon"
-                  className="bg-violet-600 hover:bg-violet-700 shrink-0 h-11 w-11"
-                  disabled={sending || uploadingFile || (!newMsg.trim() && !attachedFile)}
-                >
-                  {uploadingFile ? (
-                    <span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
+
+                {/* Input e botão Send — ocultos durante gravação */}
+                {!isRecordingAudio && (
+                  <>
+                    <Input
+                      placeholder="Digite uma mensagem..."
+                      value={newMsg}
+                      onChange={(e) => { setNewMsg(e.target.value); if (e.target.value) setAttachedFile(null); }}
+                      onKeyDown={(e) => e.key === "Enter" && (attachedFile ? handleFileSend() : sendMessage())}
+                      className="flex-1 bg-white/[0.04] border-white/[0.08] focus-visible:ring-violet-400/40 h-11"
+                      disabled={sending || uploadingFile}
+                    />
+                    <Button
+                      onClick={attachedFile ? handleFileSend : sendMessage}
+                      size="icon"
+                      className="bg-violet-600 hover:bg-violet-700 shrink-0 h-11 w-11"
+                      disabled={sending || uploadingFile || (!newMsg.trim() && !attachedFile)}
+                    >
+                      {uploadingFile ? (
+                        <span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </>

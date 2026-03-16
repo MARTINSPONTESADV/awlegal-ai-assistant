@@ -6,9 +6,10 @@ import fixWebmDuration from "fix-webm-duration";
 interface AudioRecorderProps {
   onSend: (blob: Blob, extension: string) => Promise<void>;
   disabled?: boolean;
+  onRecordingChange?: (recording: boolean) => void;
 }
 
-export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) {
+export default function AudioRecorder({ onSend, disabled, onRecordingChange }: AudioRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [sending, setSending] = useState(false);
@@ -123,6 +124,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
       mediaRecorderRef.current = recorder;
 
       setIsRecording(true);
+      onRecordingChange?.(true);
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
       drawWaveform();
     } catch (err: unknown) {
@@ -178,6 +180,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     }
 
     setIsRecording(false);
+    onRecordingChange?.(false);
     setSending(false);
     setElapsed(0);
   };
@@ -198,6 +201,7 @@ export default function AudioRecorder({ onSend, disabled }: AudioRecorderProps) 
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
     setIsRecording(false);
+    onRecordingChange?.(false);
     setElapsed(0);
 
     // onstop handler is already bound via closure in startRecording
