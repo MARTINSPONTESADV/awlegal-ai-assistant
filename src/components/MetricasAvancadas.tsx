@@ -1,27 +1,20 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SpotlightCard } from "@/components/SpotlightCard";
-import { fmtBRL } from "@/lib/financeiro";
+import { fmtBRL, calcEscritorio } from "@/lib/financeiro";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
   ResponsiveContainer, Cell, PieChart, Pie,
 } from "recharts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, Clock, DollarSign, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Clock, DollarSign, Activity, Trophy, Ticket } from "lucide-react";
 
 const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const PIE_COLORS = [
   "hsl(210, 80%, 55%)", "hsl(142, 71%, 45%)", "hsl(45, 80%, 50%)",
   "hsl(260, 60%, 55%)", "hsl(30, 80%, 50%)", "hsl(0, 60%, 50%)",
 ];
-
-interface Honorario {
-  valor: number;
-  data_pagamento: string | null;
-  tipo_honorario: string;
-  status: string;
-}
 
 interface Processo {
   id: string;
@@ -31,23 +24,28 @@ interface Processo {
   data_encerramento: string | null;
   data_execucao: string | null;
   situacao: string | null;
+  prognostico: string | null;
   valor_execucao: number | null;
   valor_acordo: number | null;
+  valor_sentenca: number | null;
   status_pagamento_honorarios: string | null;
   honorarios_percentual: number | null;
 }
 
+function calcReceita(p: Processo): number {
+  const base = Number(p.valor_acordo || 0) || Number(p.valor_execucao || 0) || Number(p.valor_sentenca || 0);
+  const pct = Number(p.honorarios_percentual || 0);
+  return calcEscritorio(base, pct);
+}
+
 export default function MetricasAvancadas() {
-  const [honorarios, setHonorarios] = useState<Honorario[]>([]);
   const [processos, setProcessos] = useState<Processo[]>([]);
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: h }, { data: p }] = await Promise.all([
-        supabase.from("honorarios").select("valor, data_pagamento, tipo_honorario, status"),
-        supabase.from("processos").select("id, tipo_processo, area_atuacao, data_distribuicao, data_encerramento, data_execucao, situacao, valor_execucao, valor_acordo, status_pagamento_honorarios, honorarios_percentual"),
-      ]);
-      if (h) setHonorarios(h as Honorario[]);
+      const { data: p } = await supabase
+        .from("processos")
+        .select("id, tipo_processo, area_atuacao, data_distribuicao, data_encerramento, data_execucao, situacao, prognostico, valor_execucao, valor_acordo, valor_sentenca, honorarios_percentual, status_pagamento_honorarios");
       if (p) setProcessos(p as Processo[]);
     };
     load();
@@ -57,34 +55,39 @@ export default function MetricasAvancadas() {
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
 
-  // KPI: Receita deste mês (honorários pagos)
+  const processosPagos = useMemo(
+    () => processos.filter(p => p.status_pagamento_honorarios === "Pago"),
+    [processos]
+  );
+
+  // KPI: Receita deste mês (processos pagos com data_encerramento neste mês)
   const receitaMesAtual = useMemo(() => {
-    return honorarios
-      .filter(h => h.status === "pago" && h.data_pagamento)
-      .filter(h => {
-        const d = new Date(h.data_pagamento!);
+    return processosPagos
+      .filter(p => {
+        if (!p.data_encerramento) return false;
+        const d = new Date(p.data_encerramento);
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
       })
-      .reduce((s, h) => s + Number(h.valor || 0), 0);
-  }, [honorarios, currentMonth, currentYear]);
+      .reduce((s, p) => s + calcReceita(p), 0);
+  }, [processosPagos, currentMonth, currentYear]);
 
   const receitaMesAnterior = useMemo(() => {
     const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
     const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    return honorarios
-      .filter(h => h.status === "pago" && h.data_pagamento)
-      .filter(h => {
-        const d = new Date(h.data_pagamento!);
+    return processosPagos
+      .filter(p => {
+        if (!p.data_encerramento) return false;
+        const d = new Date(p.data_encerramento);
         return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
       })
-      .reduce((s, h) => s + Number(h.valor || 0), 0);
-  }, [honorarios, currentMonth, currentYear]);
+      .reduce((s, p) => s + calcReceita(p), 0);
+  }, [processosPagos, currentMonth, currentYear]);
 
   const variacaoMes = receitaMesAnterior > 0
     ? ((receitaMesAtual - receitaMesAnterior) / receitaMesAnterior) * 100
     : receitaMesAtual > 0 ? 100 : 0;
 
-  // KPI: Tempo médio de duração
+  // KPI: Tempo médio de duração (somente processos com data_encerramento)
   const tempoMedioDuracao = useMemo(() => {
     const finalizados = processos.filter(p => p.data_distribuicao && p.data_encerramento);
     if (!finalizados.length) return null;
@@ -95,17 +98,31 @@ export default function MetricasAvancadas() {
     return totalDias / finalizados.length;
   }, [processos]);
 
-  // KPI: Tempo médio em execução
+  // KPI: Tempo médio em execução — apenas encerrados (exclui ativos para não inflar)
   const tempoMedioExecucao = useMemo(() => {
-    const emExec = processos.filter(p => p.data_execucao);
-    if (!emExec.length) return null;
-    const totalDias = emExec.reduce((s, p) => {
-      const fim = p.data_encerramento ? new Date(p.data_encerramento) : now;
-      const diff = fim.getTime() - new Date(p.data_execucao!).getTime();
+    const encerrados = processos.filter(p => p.data_execucao && p.data_encerramento);
+    if (!encerrados.length) return null;
+    const totalDias = encerrados.reduce((s, p) => {
+      const diff = new Date(p.data_encerramento!).getTime() - new Date(p.data_execucao!).getTime();
       return s + Math.max(0, diff / 86400000);
     }, 0);
-    return totalDias / emExec.length;
+    return totalDias / encerrados.length;
   }, [processos]);
+
+  // KPI: Taxa de Êxito
+  const taxaExito = useMemo(() => {
+    const fechados = processos.filter(p => p.data_encerramento);
+    if (!fechados.length) return null;
+    const procedentes = fechados.filter(p => p.prognostico === "Procedente").length;
+    return (procedentes / fechados.length) * 100;
+  }, [processos]);
+
+  // KPI: Ticket Médio
+  const ticketMedio = useMemo(() => {
+    if (!processosPagos.length) return null;
+    const total = processosPagos.reduce((s, p) => s + calcReceita(p), 0);
+    return total / processosPagos.length;
+  }, [processosPagos]);
 
   const formatDias = (dias: number | null) => {
     if (dias === null) return "—";
@@ -114,53 +131,60 @@ export default function MetricasAvancadas() {
     return meses > 0 ? `${meses} meses / ${d} dias` : `${d} dias`;
   };
 
-  // Gráfico: Receita mensal (honorários pagos no ano)
+  // Gráfico: Receita mensal (processos pagos agrupados por data_encerramento)
   const receitaMensal = useMemo(() => {
-    const data = MONTHS.map((m, i) => ({ name: m, valor: 0 }));
-    honorarios
-      .filter(h => h.status === "pago" && h.data_pagamento)
-      .forEach(h => {
-        const d = new Date(h.data_pagamento!);
+    const data = MONTHS.map((m) => ({ name: m, valor: 0 }));
+    processosPagos
+      .filter(p => p.data_encerramento)
+      .forEach(p => {
+        const d = new Date(p.data_encerramento!);
         if (d.getFullYear() === currentYear) {
-          data[d.getMonth()].valor += Number(h.valor || 0);
+          data[d.getMonth()].valor += calcReceita(p);
         }
       });
     return data;
-  }, [honorarios, currentYear]);
+  }, [processosPagos, currentYear]);
 
-  // Donut: Composição da receita do mês
+  // Donut: Composição da receita por prognóstico
   const composicaoReceita = useMemo(() => {
     const map: Record<string, number> = {};
-    honorarios
-      .filter(h => h.status === "pago" && h.data_pagamento)
-      .filter(h => {
-        const d = new Date(h.data_pagamento!);
+    processosPagos
+      .filter(p => p.data_encerramento)
+      .filter(p => {
+        const d = new Date(p.data_encerramento!);
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
       })
-      .forEach(h => {
-        const tipo = h.tipo_honorario || "Outros";
-        map[tipo] = (map[tipo] || 0) + Number(h.valor || 0);
+      .forEach(p => {
+        const tipo = p.prognostico || "Outros";
+        map[tipo] = (map[tipo] || 0) + calcReceita(p);
       });
     return Object.entries(map).map(([name, value]) => ({ name, value }));
-  }, [honorarios, currentMonth, currentYear]);
+  }, [processosPagos, currentMonth, currentYear]);
 
-  // Matriz de desempenho
+  // Matriz de desempenho — tempo médio somente encerrados; receita potencial = pendentes
   const matrizData = useMemo(() => {
-    const map: Record<string, { volume: number; tempoTotal: number; tempoCount: number; receita: number }> = {};
+    const map: Record<string, {
+      volume: number;
+      tempoTotal: number;
+      tempoCount: number;
+      receitaRealizada: number;
+      receitaPotencial: number;
+    }> = {};
     processos.forEach(p => {
       const key = p.tipo_processo || p.area_atuacao || "Não informado";
-      if (!map[key]) map[key] = { volume: 0, tempoTotal: 0, tempoCount: 0, receita: 0 };
+      if (!map[key]) map[key] = { volume: 0, tempoTotal: 0, tempoCount: 0, receitaRealizada: 0, receitaPotencial: 0 };
       map[key].volume++;
-      if (p.data_execucao) {
-        const fim = p.data_encerramento ? new Date(p.data_encerramento) : now;
-        const diff = Math.max(0, (fim.getTime() - new Date(p.data_execucao).getTime()) / 86400000);
+      // Tempo médio: apenas processos encerrados (data_execucao + data_encerramento)
+      if (p.data_execucao && p.data_encerramento) {
+        const diff = Math.max(0, (new Date(p.data_encerramento).getTime() - new Date(p.data_execucao).getTime()) / 86400000);
         map[key].tempoTotal += diff;
         map[key].tempoCount++;
       }
       if (p.status_pagamento_honorarios === "Pago") {
-        const base = Number(p.valor_execucao || 0) || Number(p.valor_acordo || 0);
-        const pct = Number(p.honorarios_percentual || 0);
-        map[key].receita += base * (pct / 100);
+        map[key].receitaRealizada += calcReceita(p);
+      } else {
+        // Potencial: processos não pagos
+        map[key].receitaPotencial += calcReceita(p);
       }
     });
     return Object.entries(map)
@@ -168,7 +192,8 @@ export default function MetricasAvancadas() {
         tipo,
         volume: d.volume,
         tempoMedio: d.tempoCount > 0 ? d.tempoTotal / d.tempoCount : null,
-        receita: d.receita,
+        receitaRealizada: d.receitaRealizada,
+        receitaPotencial: d.receitaPotencial,
       }))
       .sort((a, b) => b.volume - a.volume);
   }, [processos]);
@@ -181,30 +206,30 @@ export default function MetricasAvancadas() {
   };
 
   const SlaIcon = ({ dias }: { dias: number | null }) => {
-    const color = getSlaColor(dias);
     const colorMap: Record<string, string> = {
       green: "text-emerald-500", yellow: "text-yellow-500", red: "text-red-500", muted: "text-muted-foreground",
     };
+    const color = getSlaColor(dias);
     return <span className={`inline-block h-3 w-3 rounded-full ${colorMap[color]}`} style={{ backgroundColor: "currentColor" }} />;
   };
 
   return (
     <div className="space-y-6">
-      {/* KPIs */}
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+      {/* KPIs row 1 */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         <SpotlightCard>
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-500/10">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-500/10 shrink-0">
               <DollarSign className="h-7 w-7 text-emerald-500" />
             </div>
-            <div>
-              <p className="kpi-value text-2xl font-bold text-foreground">{fmtBRL(receitaMesAtual)}</p>
+            <div className="min-w-0">
+              <p className="kpi-value text-2xl font-bold text-foreground truncate">{fmtBRL(receitaMesAtual)}</p>
               <p className="text-sm text-muted-foreground">Receita deste Mês</p>
               <div className="flex items-center gap-1 text-xs mt-0.5">
                 {variacaoMes > 0 ? (
-                  <><TrendingUp className="h-3 w-3 text-emerald-500" /><span className="text-emerald-500">+{variacaoMes.toFixed(0)}% vs mês anterior</span></>
+                  <><TrendingUp className="h-3 w-3 text-emerald-500" /><span className="text-emerald-500">+{variacaoMes.toFixed(0)}% vs anterior</span></>
                 ) : variacaoMes < 0 ? (
-                  <><TrendingDown className="h-3 w-3 text-red-500" /><span className="text-red-500">{variacaoMes.toFixed(0)}% vs mês anterior</span></>
+                  <><TrendingDown className="h-3 w-3 text-red-500" /><span className="text-red-500">{variacaoMes.toFixed(0)}% vs anterior</span></>
                 ) : (
                   <><Minus className="h-3 w-3 text-muted-foreground" /><span className="text-muted-foreground">Sem variação</span></>
                 )}
@@ -215,7 +240,7 @@ export default function MetricasAvancadas() {
 
         <SpotlightCard>
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/10">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/10 shrink-0">
               <Clock className="h-7 w-7 text-blue-500" />
             </div>
             <div>
@@ -228,14 +253,59 @@ export default function MetricasAvancadas() {
 
         <SpotlightCard>
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-purple-500/10">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-amber-500/10 shrink-0">
+              <Trophy className="h-7 w-7 text-amber-500" />
+            </div>
+            <div>
+              <p className="kpi-value text-2xl font-bold text-foreground">
+                {taxaExito !== null ? `${taxaExito.toFixed(1)}%` : "—"}
+              </p>
+              <p className="text-sm text-muted-foreground">Taxa de Êxito</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Procedentes / encerrados</p>
+            </div>
+          </div>
+        </SpotlightCard>
+
+        <SpotlightCard>
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-purple-500/10 shrink-0">
+              <Ticket className="h-7 w-7 text-purple-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="kpi-value text-2xl font-bold text-foreground truncate">
+                {ticketMedio !== null ? fmtBRL(ticketMedio) : "—"}
+              </p>
+              <p className="text-sm text-muted-foreground">Ticket Médio</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Receita / processos pagos</p>
+            </div>
+          </div>
+        </SpotlightCard>
+      </div>
+
+      {/* KPI: Tempo médio execução (encerrados apenas) */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+        <SpotlightCard>
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-purple-500/10 shrink-0">
               <Activity className="h-7 w-7 text-purple-500" />
             </div>
             <div>
               <p className="kpi-value text-2xl font-bold text-foreground">{formatDias(tempoMedioExecucao)}</p>
               <p className="text-sm text-muted-foreground">Tempo Médio em Execução</p>
-              <p className="text-xs text-muted-foreground/70 mt-0.5">Data de Execução → Encerramento/Hoje</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Data Execução → Encerramento (somente encerrados)</p>
             </div>
+          </div>
+        </SpotlightCard>
+
+        <SpotlightCard>
+          <div className="flex flex-col justify-center h-full gap-2 px-2">
+            <p className="text-sm font-semibold text-muted-foreground">Total Processos</p>
+            <div className="flex gap-4 text-sm">
+              <span className="text-muted-foreground">Ativos: <span className="font-bold text-foreground">{processos.filter(p => !p.data_encerramento).length}</span></span>
+              <span className="text-muted-foreground">Encerrados: <span className="font-bold text-foreground">{processos.filter(p => p.data_encerramento).length}</span></span>
+              <span className="text-muted-foreground">Total: <span className="font-bold text-foreground">{processos.length}</span></span>
+            </div>
+            <p className="text-xs text-muted-foreground/70">Processos pagos: {processosPagos.length}</p>
           </div>
         </SpotlightCard>
       </div>
@@ -307,12 +377,13 @@ export default function MetricasAvancadas() {
                 <TableHead>Tipo / Matéria</TableHead>
                 <TableHead className="text-center">Volume</TableHead>
                 <TableHead className="text-center">Tempo Médio Execução</TableHead>
-                <TableHead className="text-right">Receita Gerada</TableHead>
+                <TableHead className="text-right">Receita Realizada</TableHead>
+                <TableHead className="text-right">Receita Potencial</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {matrizData.length === 0 && (
-                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Sem dados suficientes</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Sem dados suficientes</TableCell></TableRow>
               )}
               {matrizData.map(row => (
                 <TableRow key={row.tipo}>
@@ -326,7 +397,8 @@ export default function MetricasAvancadas() {
                       <span className="text-sm">{formatDias(row.tempoMedio)}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-mono text-sm">{fmtBRL(row.receita)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">{fmtBRL(row.receitaRealizada)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmtBRL(row.receitaPotencial)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -336,6 +408,7 @@ export default function MetricasAvancadas() {
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> ≤ 6 meses</span>
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-yellow-500" /> 6–12 meses</span>
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> &gt; 12 meses</span>
+          <span className="ml-auto text-muted-foreground/60">Receita Potencial = processos pendentes de pagamento</span>
         </div>
       </SpotlightCard>
     </div>
