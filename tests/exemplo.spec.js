@@ -149,8 +149,8 @@ test.describe('Aba Atendimento', () => {
     await page.waitForLoadState('networkidle');
 
     // Usa getByRole para ser específico — evita conflito com outros textos na página
-    await expect(page.getByRole('button', { name: 'Resolva Já' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Martins Pontes' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resolva Já', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Martins Pontes', exact: true })).toBeVisible();
   });
 
   test('3.3 — trocar de canal não quebra a página', async ({ page }) => {
@@ -159,19 +159,19 @@ test.describe('Aba Atendimento', () => {
     await page.waitForTimeout(2000);
 
     // Troca para Martins Pontes
-    await page.getByRole('button', { name: 'Martins Pontes' }).click();
+    await page.getByRole('button', { name: 'Martins Pontes', exact: true }).click();
     await page.waitForTimeout(1000);
 
     await page.screenshot({ path: 'tests/screenshots/05-aba-mp.png', fullPage: true });
 
     // A aba deve continuar visível e responsiva
-    await expect(page.getByRole('button', { name: 'Martins Pontes' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Martins Pontes', exact: true })).toBeVisible();
     await expect(page.locator('#root')).not.toBeEmpty();
 
     // Volta para Resolva Já
-    await page.getByRole('button', { name: 'Resolva Já' }).click();
+    await page.getByRole('button', { name: 'Resolva Já', exact: true }).click();
     await page.waitForTimeout(500);
-    await expect(page.getByRole('button', { name: 'Resolva Já' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resolva Já', exact: true })).toBeVisible();
   });
 
   test('3.4 — busca filtra contatos (sem resultado)', async ({ page }) => {

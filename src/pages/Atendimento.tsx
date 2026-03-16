@@ -15,7 +15,7 @@ import {
 import {
   Bot, BotOff, Send, Phone, User, Circle,
   Search, Briefcase, Menu, Info, Pencil, Check, X, Building2, Zap,
-  Archive, ArchiveRestore, MessageSquare
+  Archive, ArchiveRestore, MessageSquare, Paperclip, FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -66,8 +66,11 @@ export default function Atendimento() {
   const [contactName, setContactName] = useState("");
   const [canal, setCanal] = useState<Canal>("resolva_ja");
   const [showArchived, setShowArchived] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Fetch: carrega dados brutos de controle_bot (SEM JOIN, SEM coluna arquivado) ──
   useEffect(() => {
@@ -407,7 +410,7 @@ export default function Atendimento() {
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo: "text", numero: selectedChat, mensagem: newMsg }),
+        body: JSON.stringify({ tipo: "text", numero: selectedChat, mensagem: newMsg, canal }),
       });
       if (!response.ok) throw new Error("Webhook error");
       setNewMsg("");
@@ -441,12 +444,43 @@ export default function Atendimento() {
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo: "audio", numero: selectedChat, audioUrl: publicUrl, options: { ptt: true } }),
+        body: JSON.stringify({ tipo: "audio", numero: selectedChat, audioUrl: publicUrl, canal, options: { ptt: true } }),
       });
       if (!response.ok) throw new Error(`Webhook HTTP ${response.status}`);
       toast({ title: "Áudio enviado!" });
     } catch {
       toast({ title: "Erro ao enviar áudio", variant: "destructive" });
+    }
+  };
+
+  const handleFileSend = async () => {
+    if (!attachedFile || !selectedChat) return;
+    setUploadingFile(true);
+    try {
+      const tipo = attachedFile.type.startsWith("image/") ? "image" : "document";
+      const safeName = attachedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filename = `${selectedChat}/${Date.now()}_${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from("chat-media")
+        .upload(filename, attachedFile, { contentType: attachedFile.type, cacheControl: "3600", upsert: false });
+      if (uploadError) {
+        toast({ title: "Erro ao fazer upload do arquivo", variant: "destructive" });
+        return;
+      }
+      const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(filename);
+      const mediaUrl = urlData.publicUrl;
+      const response = await fetch(N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo, numero: selectedChat, mediaUrl, fileName: attachedFile.name, canal }),
+      });
+      if (!response.ok) throw new Error(`Webhook HTTP ${response.status}`);
+      setAttachedFile(null);
+      toast({ title: tipo === "image" ? "Imagem enviada!" : "Documento enviado!" });
+    } catch {
+      toast({ title: "Erro ao enviar arquivo", variant: "destructive" });
+    } finally {
+      setUploadingFile(false);
     }
   };
 
@@ -850,23 +884,58 @@ export default function Atendimento() {
 
             {/* Input bar */}
             <div className="px-3 pt-3 pb-6 md:pb-4 border-t border-white/[0.06] bg-background z-20">
+              {/* File preview */}
+              {attachedFile && (
+                <div className="max-w-3xl mx-auto mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08]">
+                  {attachedFile.type.startsWith("image/") ? (
+                    <img src={URL.createObjectURL(attachedFile)} alt="" className="h-10 w-10 rounded object-cover shrink-0" />
+                  ) : (
+                    <FileText className="h-8 w-8 text-violet-400 shrink-0" />
+                  )}
+                  <span className="text-sm text-foreground/80 truncate flex-1">{attachedFile.name}</span>
+                  <button onClick={() => setAttachedFile(null)} className="text-muted-foreground hover:text-foreground transition-colors">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
               <div className="flex items-center gap-2 sm:gap-3 max-w-3xl mx-auto">
-                <AudioRecorder onSend={handleAudioSend} disabled={sending} />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) { setAttachedFile(f); setNewMsg(""); } e.target.value = ""; }}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 h-11 w-11 text-muted-foreground hover:text-foreground"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending || uploadingFile}
+                  title="Anexar arquivo"
+                >
+                  <Paperclip className="h-5 w-5" />
+                </Button>
+                <AudioRecorder onSend={handleAudioSend} disabled={sending || uploadingFile} />
                 <Input
                   placeholder="Digite uma mensagem..."
                   value={newMsg}
-                  onChange={(e) => setNewMsg(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  onChange={(e) => { setNewMsg(e.target.value); if (e.target.value) setAttachedFile(null); }}
+                  onKeyDown={(e) => e.key === "Enter" && (attachedFile ? handleFileSend() : sendMessage())}
                   className="flex-1 bg-white/[0.04] border-white/[0.08] focus-visible:ring-violet-400/40 h-11"
-                  disabled={sending}
+                  disabled={sending || uploadingFile}
                 />
                 <Button
-                  onClick={sendMessage}
+                  onClick={attachedFile ? handleFileSend : sendMessage}
                   size="icon"
                   className="bg-violet-600 hover:bg-violet-700 shrink-0 h-11 w-11"
-                  disabled={sending}
+                  disabled={sending || uploadingFile || (!newMsg.trim() && !attachedFile)}
                 >
-                  <Send className="h-4 w-4" />
+                  {uploadingFile ? (
+                    <span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>
