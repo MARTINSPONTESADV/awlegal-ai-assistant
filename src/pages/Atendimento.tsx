@@ -147,9 +147,39 @@ export default function Atendimento() {
           };
         });
 
+        // ── Carrega contatos RJ de historico_mensagens (contatos MP que tbm usam RJ) ──
+        const { data: rjRaw } = await supabase
+          .from("historico_mensagens")
+          .select("whatsapp_id, conteudo, tipo_midia, created_at")
+          .eq("canal", "resolva_ja")
+          .order("created_at", { ascending: false })
+          .limit(500);
+
+        const rjMap = new Map<string, any>();
+        for (const msg of (rjRaw || [])) {
+          if (!msg.whatsapp_id || rjMap.has(msg.whatsapp_id)) continue;
+          rjMap.set(msg.whatsapp_id, msg);
+        }
+
+        const rjLeads = Array.from(rjMap.entries())
+          .filter(([phone]) =>
+            !enriched.find((l: any) => l.whatsapp_numero === phone && (!l.canal || l.canal === "resolva_ja"))
+          )
+          .map(([phone, lastMsg]) => {
+            const cb = enriched.find((l: any) => l.whatsapp_numero === phone);
+            return {
+              ...(cb || {}),
+              whatsapp_numero: phone,
+              canal: "resolva_ja",
+              bot_ativo: cb?.bot_ativo ?? false,
+              arquivado: cb?.arquivado ?? false,
+              historico_mensagens: [lastMsg],
+            };
+          });
+
         // Mescla deduplicando por (whatsapp_numero + canal)
         const seen = new Set<string>();
-        const combined = [...enriched, ...mpLeads].filter((l: any) => {
+        const combined = [...enriched, ...mpLeads, ...rjLeads].filter((l: any) => {
           const key = `${l.whatsapp_numero}||${l.canal ?? "null"}`;
           if (seen.has(key)) return false;
           seen.add(key);
