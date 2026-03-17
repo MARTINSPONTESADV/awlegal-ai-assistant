@@ -46,15 +46,8 @@ export default function AudioRecorder({ onSend, disabled, onRecordingChange }: A
     setElapsed(0);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-      });
+      // Constraints mínimos — compatível com iOS Safari e todos os Android
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
       const audioCtx = new AudioContext();
@@ -64,11 +57,13 @@ export default function AudioRecorder({ onSend, disabled, onRecordingChange }: A
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      // MUST use webm — fix-webm-duration only works with WebM containers
+      // Detecção de MIME type com fallback para iOS (mp4/aac)
       const webmMime = "audio/webm;codecs=opus";
-      const recorder = MediaRecorder.isTypeSupported(webmMime)
-        ? new MediaRecorder(stream, { mimeType: webmMime })
-        : new MediaRecorder(stream);
+      const mp4Mime = "audio/mp4";
+      const mimeType = MediaRecorder.isTypeSupported(webmMime) ? webmMime
+        : MediaRecorder.isTypeSupported(mp4Mime) ? mp4Mime
+        : "";
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
 
       console.log("[AudioRecorder] NEW session. mimeType:", recorder.mimeType);
 
@@ -109,9 +104,13 @@ export default function AudioRecorder({ onSend, disabled, onRecordingChange }: A
 
         setSending(true);
         try {
-          const fixedBlob = await fixWebmDuration(rawBlob, duration, { logger: false });
-          console.log(`[AudioRecorder][${sessionId}] Fixed blob: ${fixedBlob.size} bytes`);
-          await onSend(fixedBlob, ".webm");
+          const isWebm = rawBlob.type.includes("webm");
+          const ext = isWebm ? ".webm" : ".mp4";
+          const finalBlob = isWebm
+            ? await fixWebmDuration(rawBlob, duration, { logger: false })
+            : rawBlob;
+          console.log(`[AudioRecorder][${sessionId}] Final blob: ${finalBlob.size} bytes, ext: ${ext}`);
+          await onSend(finalBlob, ext);
         } catch (err) {
           console.error(`[AudioRecorder][${sessionId}] Erro no upload:`, err);
         } finally {

@@ -73,6 +73,7 @@ export default function Atendimento() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const selectedChatRef = useRef<string | null>(null);
 
   // ── Fetch: carrega dados brutos de controle_bot (SEM JOIN, SEM coluna arquivado) ──
   useEffect(() => {
@@ -91,39 +92,42 @@ export default function Atendimento() {
           return;
         }
 
-        // Enriquece cada lead com a última mensagem (query separada, sem FK)
-        const enriched = await Promise.all(
-          data.map(async (lead: any) => {
-            try {
-              let previewQuery = supabase
-                .from("historico_mensagens")
-                .select("conteudo, created_at, tipo_midia")
-                .eq("whatsapp_id", lead.whatsapp_numero)
-                .order("created_at", { ascending: false })
-                .limit(1);
-              if (lead.canal === "martins_pontes") {
-                previewQuery = previewQuery.eq("canal", "martins_pontes");
-              } else {
-                previewQuery = previewQuery.or("canal.is.null,canal.eq.resolva_ja");
-              }
-              const { data: msgs } = await previewQuery;
-              return {
-                ...lead,
-                historico_mensagens: msgs || [],
-              };
-            } catch {
-              return { ...lead, historico_mensagens: [] };
-            }
-          })
-        );
+        // ── Batch query: uma única query para previews de todos os leads ──
+        const phoneNumbers = data.map((l: any) => l.whatsapp_numero).filter(Boolean);
+        const batchLimit = Math.min(phoneNumbers.length * 3, 600);
+        const { data: previewMsgs } = phoneNumbers.length > 0
+          ? await supabase
+              .from("historico_mensagens")
+              .select("whatsapp_id, conteudo, created_at, tipo_midia, canal")
+              .in("whatsapp_id", phoneNumbers)
+              .order("created_at", { ascending: false })
+              .limit(batchLimit)
+          : { data: [] };
+
+        // Mapa keyed por "whatsapp_id||canal" — primeira entrada = mais recente
+        const previewMap = new Map<string, any>();
+        for (const msg of (previewMsgs || [])) {
+          const key = `${msg.whatsapp_id}||${msg.canal ?? "null"}`;
+          if (!previewMap.has(key)) previewMap.set(key, msg);
+        }
+
+        const enriched = data.map((lead: any) => {
+          const leadCanal = lead.canal === "martins_pontes" ? "martins_pontes" : "null";
+          const preview = previewMap.get(`${lead.whatsapp_numero}||${leadCanal}`)
+            ?? previewMap.get(`${lead.whatsapp_numero}||resolva_ja`)
+            ?? null;
+          return { ...lead, historico_mensagens: preview ? [preview] : [] };
+        });
+
         // ── Carrega contatos MP de historico_mensagens (fonte de verdade da aba MP) ──
         // Necessário porque um número pode estar em controle_bot como "resolva_ja"
         // mas também mandar mensagens para o canal Martins Pontes.
-        const { data: mpRaw } = await supabase
-          .from("historico_mensagens")
+        const mpTable = supabase.from("historico_mensagens") as any;
+        const { data: mpRaw } = await mpTable
           .select("whatsapp_id, conteudo, tipo_midia, created_at")
           .eq("canal", "martins_pontes")
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .limit(500);
 
         const mpMap = new Map<string, any>();
         for (const msg of (mpRaw || [])) {
@@ -227,14 +231,15 @@ export default function Atendimento() {
         .from("historico_mensagens")
         .select("*")
         .eq("whatsapp_id", selectedChat)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .limit(100);
       if (canal === "martins_pontes") {
         msgQuery = msgQuery.eq("canal", "martins_pontes");
       } else {
         msgQuery = msgQuery.or("canal.is.null,canal.eq.resolva_ja");
       }
       const { data } = await msgQuery;
-      if (data) setMensagens(data);
+      if (data) setMensagens([...data].reverse());
     }
     loadMsgs();
 
@@ -315,7 +320,7 @@ export default function Atendimento() {
               ...c,
               arquivado: deveDesarquivar ? false : c.arquivado,
               historico_mensagens: [{ conteudo: nova.conteudo, tipo_midia: nova.tipo_midia, created_at: nova.created_at }],
-              unread_count: (isIncoming && selectedChat !== remetente)
+              unread_count: (isIncoming && selectedChatRef.current !== remetente)
                 ? (c.unread_count || 0) + 1
                 : c.unread_count,
             };
@@ -325,7 +330,7 @@ export default function Atendimento() {
       .subscribe();
 
     return () => { supabase.removeChannel(globalChannel); };
-  }, [selectedChat]);
+  }, []);
 
   // ── Realtime CONTROLE_BOT: escuta atualizações de perfil ──
   useEffect(() => {
@@ -355,6 +360,9 @@ export default function Atendimento() {
 
     return () => { supabase.removeChannel(controleChannel); };
   }, []);
+
+  // Mantém ref sincronizada sem recriar o channel global
+  useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
 
   const currentChat = conversasComputadas.find((c: any) => c.whatsapp_numero === selectedChat);
 
