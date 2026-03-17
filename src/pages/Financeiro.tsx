@@ -11,8 +11,12 @@ import { Button } from "@/components/ui/button";
 import {
   DollarSign, TrendingUp, Handshake, CheckCircle2, Clock,
   Archive, Briefcase, ExternalLink, Scale, Info, ShieldCheck, Sparkles,
-  Megaphone, Users, MousePointerClick, Zap,
+  Megaphone, Users, MousePointerClick, Zap, Eye, Target, RefreshCw,
 } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  ResponsiveContainer, Cell,
+} from "recharts";
 import {
   fmtBRL, calcEscritorio, calcRepasse, isProcessoEncerrado, type ProcessoFinanceiro,
 } from "@/lib/financeiro";
@@ -148,7 +152,12 @@ export default function Financeiro() {
   // Meta Ads computed metrics
   const metaTotalSpend = metaAds.reduce((s, r) => s + Number(r.spend || 0), 0);
   const metaTotalLeads = metaAds.reduce((s, r) => s + Number(r.leads || 0), 0);
+  const metaTotalImpressions = metaAds.reduce((s, r) => s + Number(r.impressions || 0), 0);
+  const metaTotalClicks = metaAds.reduce((s, r) => s + Number(r.clicks || 0), 0);
   const metaCPA = metaTotalLeads > 0 ? metaTotalSpend / metaTotalLeads : null;
+  const metaAvgCtr = metaTotalImpressions > 0 ? (metaTotalClicks / metaTotalImpressions) * 100 : null;
+  const metaConvRate = metaTotalClicks > 0 ? (metaTotalLeads / metaTotalClicks) * 100 : null;
+  const metaAvgCpm = metaTotalImpressions > 0 ? (metaTotalSpend / metaTotalImpressions) * 1000 : null;
 
   // Group campaigns for table
   const campaignMap: Record<string, { name: string; spend: number; impressions: number; clicks: number; leads: number; cpc: number[]; ctr: number[] }> = {};
@@ -162,7 +171,8 @@ export default function Financeiro() {
     if (r.cpc) campaignMap[key].cpc.push(Number(r.cpc));
     if (r.ctr) campaignMap[key].ctr.push(Number(r.ctr));
   });
-  const campaigns = Object.values(campaignMap).sort((a, b) => b.spend - a.spend);
+  const campaigns = Object.values(campaignMap).sort((a, b) => b.leads - a.leads);
+  const topByLeads = campaigns.slice(0, 7);
 
   return (
     <>
@@ -306,29 +316,100 @@ export default function Financeiro() {
           ) : metaLoaded && metaAds.length > 0 ? (
             /* Data available */
             <div className="space-y-6">
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                <SpotlightCard>
+              {/* KPI Row 1 */}
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+                <SpotlightCard glowColor="purple">
                   <div className="flex items-center gap-4">
                     <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/10 shrink-0"><DollarSign className="h-7 w-7 text-blue-500" /></div>
-                    <div><p className="text-2xl font-bold">{fmtBRL(metaTotalSpend)}</p><p className="text-sm text-muted-foreground">Gasto Meta (total)</p></div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Gasto Total (30d)</p>
+                      <p className="text-2xl font-bold">{fmtBRL(metaTotalSpend)}</p>
+                    </div>
                   </div>
                 </SpotlightCard>
-                <SpotlightCard>
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-purple-500/10 shrink-0"><MousePointerClick className="h-7 w-7 text-purple-500" /></div>
-                    <div><p className="text-2xl font-bold">{metaCPA !== null ? fmtBRL(metaCPA) : "—"}</p><p className="text-sm text-muted-foreground">CPA (Custo por Lead)</p></div>
-                  </div>
-                </SpotlightCard>
-                <SpotlightCard>
+                <SpotlightCard glowColor="purple">
                   <div className="flex items-center gap-4">
                     <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-500/10 shrink-0"><Users className="h-7 w-7 text-emerald-500" /></div>
-                    <div><p className="text-2xl font-bold">{metaTotalLeads.toLocaleString("pt-BR")}</p><p className="text-sm text-muted-foreground">Leads Gerados</p></div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Leads Gerados</p>
+                      <p className="text-2xl font-bold">{metaTotalLeads.toLocaleString("pt-BR")}</p>
+                    </div>
+                  </div>
+                </SpotlightCard>
+                <SpotlightCard glowColor="purple">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-purple-500/10 shrink-0"><MousePointerClick className="h-7 w-7 text-purple-500" /></div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">CPL (Custo / Lead)</p>
+                      <p className="text-2xl font-bold">{metaCPA !== null ? fmtBRL(metaCPA) : "—"}</p>
+                    </div>
                   </div>
                 </SpotlightCard>
               </div>
 
+              {/* KPI Row 2 */}
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+                <SpotlightCard glowColor="cyan">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-cyan-500/10 shrink-0"><Target className="h-7 w-7 text-cyan-500" /></div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">CTR Médio</p>
+                      <p className="text-2xl font-bold">{metaAvgCtr !== null ? `${metaAvgCtr.toFixed(2)}%` : "—"}</p>
+                    </div>
+                  </div>
+                </SpotlightCard>
+                <SpotlightCard glowColor="cyan">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-sky-500/10 shrink-0"><Eye className="h-7 w-7 text-sky-500" /></div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Impressões Totais</p>
+                      <p className="text-2xl font-bold">{metaTotalImpressions.toLocaleString("pt-BR")}</p>
+                    </div>
+                  </div>
+                </SpotlightCard>
+                <SpotlightCard glowColor="cyan">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-500/10 shrink-0"><RefreshCw className="h-7 w-7 text-indigo-500" /></div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Taxa Conversão (Lead/Clique)</p>
+                      <p className="text-2xl font-bold">{metaConvRate !== null ? `${metaConvRate.toFixed(2)}%` : "—"}</p>
+                    </div>
+                  </div>
+                </SpotlightCard>
+              </div>
+
+              {/* Bar Chart: Top campanhas por leads */}
+              {topByLeads.length > 0 && (
+                <SpotlightCard>
+                  <h3 className="text-base font-semibold mb-4 text-muted-foreground">Leads por Campanha (top {topByLeads.length})</h3>
+                  <ResponsiveContainer width="100%" height={Math.max(180, topByLeads.length * 42)}>
+                    <BarChart data={topByLeads} layout="vertical" margin={{ left: 8, right: 40, top: 4, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                      <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={160}
+                        tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                        tickFormatter={(v: string) => v.length > 22 ? v.slice(0, 22) + "…" : v}
+                      />
+                      <RechartsTooltip
+                        formatter={(value: number) => [value, "Leads"]}
+                        contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: 12 }}
+                      />
+                      <Bar dataKey="leads" radius={[0, 6, 6, 0]} maxBarSize={28}>
+                        {topByLeads.map((_, i) => (
+                          <Cell key={i} fill={`hsl(${220 + i * 15}, 70%, ${58 - i * 3}%)`} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </SpotlightCard>
+              )}
+
+              {/* Campaigns table */}
               <SpotlightCard>
-                <h3 className="text-lg font-semibold mb-4">Campanhas</h3>
+                <h3 className="text-base font-semibold mb-4 text-muted-foreground">Detalhamento por Campanha</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -339,21 +420,29 @@ export default function Financeiro() {
                         <th className="text-right py-2 px-3">Cliques</th>
                         <th className="text-right py-2 px-3">CTR</th>
                         <th className="text-right py-2 px-3">Leads</th>
-                        <th className="text-right py-2 pl-3">CPA</th>
+                        <th className="text-right py-2 px-3">CPL</th>
+                        <th className="text-right py-2 pl-3">Conversão</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {campaigns.map(c => (
-                        <tr key={c.name} className="border-b border-border/50 hover:bg-muted/30">
-                          <td className="py-2 pr-4 font-medium max-w-[200px] truncate">{c.name}</td>
-                          <td className="text-right py-2 px-3 font-mono">{fmtBRL(c.spend)}</td>
-                          <td className="text-right py-2 px-3">{c.impressions.toLocaleString("pt-BR")}</td>
-                          <td className="text-right py-2 px-3">{c.clicks.toLocaleString("pt-BR")}</td>
-                          <td className="text-right py-2 px-3">{c.ctr.length > 0 ? `${(c.ctr.reduce((a, b) => a + b, 0) / c.ctr.length).toFixed(2)}%` : "—"}</td>
-                          <td className="text-right py-2 px-3">{c.leads}</td>
-                          <td className="text-right py-2 pl-3 font-mono">{c.leads > 0 ? fmtBRL(c.spend / c.leads) : "—"}</td>
-                        </tr>
-                      ))}
+                      {campaigns.map(c => {
+                        const ctr = c.impressions > 0 ? (c.clicks / c.impressions * 100) : 0;
+                        const conv = c.clicks > 0 ? (c.leads / c.clicks * 100) : 0;
+                        return (
+                          <tr key={c.name} className="border-b border-border/50 hover:bg-muted/30">
+                            <td className="py-2 pr-4 font-medium max-w-[200px] truncate">{c.name}</td>
+                            <td className="text-right py-2 px-3 font-mono text-xs">{fmtBRL(c.spend)}</td>
+                            <td className="text-right py-2 px-3 text-xs">{c.impressions.toLocaleString("pt-BR")}</td>
+                            <td className="text-right py-2 px-3 text-xs">{c.clicks.toLocaleString("pt-BR")}</td>
+                            <td className="text-right py-2 px-3 text-xs">{c.impressions > 0 ? `${ctr.toFixed(2)}%` : "—"}</td>
+                            <td className="text-right py-2 px-3">
+                              <span className="inline-flex items-center justify-center min-w-[2rem] rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs px-2 py-0.5">{c.leads}</span>
+                            </td>
+                            <td className="text-right py-2 px-3 font-mono text-xs">{c.leads > 0 ? fmtBRL(c.spend / c.leads) : "—"}</td>
+                            <td className="text-right py-2 pl-3 text-xs">{c.clicks > 0 ? `${conv.toFixed(1)}%` : "—"}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
