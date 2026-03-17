@@ -154,25 +154,37 @@ export default function Financeiro() {
   const metaTotalLeads = metaAds.reduce((s, r) => s + Number(r.leads || 0), 0);
   const metaTotalImpressions = metaAds.reduce((s, r) => s + Number(r.impressions || 0), 0);
   const metaTotalClicks = metaAds.reduce((s, r) => s + Number(r.clicks || 0), 0);
+  const metaTotalReach = metaAds.reduce((s, r) => s + Number(r.reach || 0), 0);
   const metaCPA = metaTotalLeads > 0 ? metaTotalSpend / metaTotalLeads : null;
   const metaAvgCtr = metaTotalImpressions > 0 ? (metaTotalClicks / metaTotalImpressions) * 100 : null;
-  const metaConvRate = metaTotalClicks > 0 ? (metaTotalLeads / metaTotalClicks) * 100 : null;
-  const metaAvgCpm = metaTotalImpressions > 0 ? (metaTotalSpend / metaTotalImpressions) * 1000 : null;
+  const metaAvgCpc = metaTotalClicks > 0 ? metaTotalSpend / metaTotalClicks : null;
 
   // Group campaigns for table
-  const campaignMap: Record<string, { name: string; spend: number; impressions: number; clicks: number; leads: number; cpc: number[]; ctr: number[] }> = {};
+  const campaignMap: Record<string, { name: string; spend: number; impressions: number; clicks: number; leads: number; reach: number; cpc: number[]; ctr: number[] }> = {};
   metaAds.forEach(r => {
     const key = r.campaign_id;
-    if (!campaignMap[key]) campaignMap[key] = { name: r.campaign_name || r.campaign_id, spend: 0, impressions: 0, clicks: 0, leads: 0, cpc: [], ctr: [] };
+    if (!campaignMap[key]) campaignMap[key] = { name: r.campaign_name || r.campaign_id, spend: 0, impressions: 0, clicks: 0, leads: 0, reach: 0, cpc: [], ctr: [] };
     campaignMap[key].spend += Number(r.spend || 0);
     campaignMap[key].impressions += Number(r.impressions || 0);
     campaignMap[key].clicks += Number(r.clicks || 0);
     campaignMap[key].leads += Number(r.leads || 0);
+    campaignMap[key].reach += Number(r.reach || 0);
     if (r.cpc) campaignMap[key].cpc.push(Number(r.cpc));
     if (r.ctr) campaignMap[key].ctr.push(Number(r.ctr));
   });
   const campaigns = Object.values(campaignMap).sort((a, b) => b.leads - a.leads);
+  const topByCtr = campaigns.map(c => ({ ...c, ctrPct: c.impressions > 0 ? c.clicks / c.impressions * 100 : 0 })).sort((a, b) => b.ctrPct - a.ctrPct).slice(0, 7);
   const topByLeads = campaigns.slice(0, 7);
+  const chartData = metaTotalLeads > 0 ? topByLeads : topByCtr;
+
+  // Best campaign banner
+  const bestCampaign = campaigns.length >= 2
+    ? campaigns.reduce((best, c) => {
+        const ctr = c.impressions > 0 ? c.clicks / c.impressions * 100 : 0;
+        const bestCtr = best.impressions > 0 ? best.clicks / best.impressions * 100 : 0;
+        return ctr > bestCtr ? c : best;
+      })
+    : null;
 
   return (
     <>
@@ -316,38 +328,38 @@ export default function Financeiro() {
           ) : metaLoaded && metaAds.length > 0 ? (
             /* Data available */
             <div className="space-y-6">
-              {/* KPI Row 1 */}
+              {/* KPI Row 1 — Investimento & Alcance */}
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
                 <SpotlightCard glowColor="purple">
                   <div className="flex items-center gap-4">
                     <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/10 shrink-0"><DollarSign className="h-7 w-7 text-blue-500" /></div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Gasto Total (30d)</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">Investimento Total</p>
                       <p className="text-2xl font-bold">{fmtBRL(metaTotalSpend)}</p>
                     </div>
                   </div>
                 </SpotlightCard>
                 <SpotlightCard glowColor="purple">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-500/10 shrink-0"><Users className="h-7 w-7 text-emerald-500" /></div>
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-violet-500/10 shrink-0"><Eye className="h-7 w-7 text-violet-500" /></div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Leads Gerados</p>
-                      <p className="text-2xl font-bold">{metaTotalLeads.toLocaleString("pt-BR")}</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">Alcance Total</p>
+                      <p className="text-2xl font-bold">{metaTotalReach.toLocaleString("pt-BR")}</p>
                     </div>
                   </div>
                 </SpotlightCard>
                 <SpotlightCard glowColor="purple">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-purple-500/10 shrink-0"><MousePointerClick className="h-7 w-7 text-purple-500" /></div>
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-sky-500/10 shrink-0"><Megaphone className="h-7 w-7 text-sky-500" /></div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">CPL (Custo / Lead)</p>
-                      <p className="text-2xl font-bold">{metaCPA !== null ? fmtBRL(metaCPA) : "—"}</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">Impressões Totais</p>
+                      <p className="text-2xl font-bold">{metaTotalImpressions.toLocaleString("pt-BR")}</p>
                     </div>
                   </div>
                 </SpotlightCard>
               </div>
 
-              {/* KPI Row 2 */}
+              {/* KPI Row 2 — Performance */}
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
                 <SpotlightCard glowColor="cyan">
                   <div className="flex items-center gap-4">
@@ -360,32 +372,36 @@ export default function Financeiro() {
                 </SpotlightCard>
                 <SpotlightCard glowColor="cyan">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-sky-500/10 shrink-0"><Eye className="h-7 w-7 text-sky-500" /></div>
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-teal-500/10 shrink-0"><MousePointerClick className="h-7 w-7 text-teal-500" /></div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Impressões Totais</p>
-                      <p className="text-2xl font-bold">{metaTotalImpressions.toLocaleString("pt-BR")}</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">CPC Médio</p>
+                      <p className="text-2xl font-bold">{metaAvgCpc !== null ? fmtBRL(metaAvgCpc) : "—"}</p>
                     </div>
                   </div>
                 </SpotlightCard>
                 <SpotlightCard glowColor="cyan">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-500/10 shrink-0"><RefreshCw className="h-7 w-7 text-indigo-500" /></div>
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-500/10 shrink-0"><Users className="h-7 w-7 text-emerald-500" /></div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Taxa Conversão (Lead/Clique)</p>
-                      <p className="text-2xl font-bold">{metaConvRate !== null ? `${metaConvRate.toFixed(2)}%` : "—"}</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">Leads Gerados</p>
+                      <p className="text-2xl font-bold">{metaTotalLeads.toLocaleString("pt-BR")}</p>
+                      {metaCPA !== null && <p className="text-xs text-muted-foreground mt-0.5">CPL: {fmtBRL(metaCPA)}</p>}
                     </div>
                   </div>
                 </SpotlightCard>
               </div>
 
-              {/* Bar Chart: Top campanhas por leads */}
-              {topByLeads.length > 0 && (
+              {/* Bar Chart — adaptive: CTR when no leads, leads otherwise */}
+              {chartData.length > 0 && (
                 <SpotlightCard>
-                  <h3 className="text-base font-semibold mb-4 text-muted-foreground">Leads por Campanha (top {topByLeads.length})</h3>
-                  <ResponsiveContainer width="100%" height={Math.max(180, topByLeads.length * 42)}>
-                    <BarChart data={topByLeads} layout="vertical" margin={{ left: 8, right: 40, top: 4, bottom: 4 }}>
+                  <h3 className="text-base font-semibold mb-4 text-muted-foreground">
+                    {metaTotalLeads > 0 ? `Leads por Campanha (top ${chartData.length})` : `CTR por Campanha (top ${chartData.length})`}
+                  </h3>
+                  <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 42)}>
+                    <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 40, top: 4, bottom: 4 }}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                      <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                      <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false}
+                        tickFormatter={metaTotalLeads === 0 ? (v: number) => `${v.toFixed(1)}%` : undefined} />
                       <YAxis
                         type="category"
                         dataKey="name"
@@ -394,18 +410,34 @@ export default function Financeiro() {
                         tickFormatter={(v: string) => v.length > 22 ? v.slice(0, 22) + "…" : v}
                       />
                       <RechartsTooltip
-                        formatter={(value: number) => [value, "Leads"]}
+                        formatter={(value: number) => metaTotalLeads > 0 ? [value, "Leads"] : [`${value.toFixed(2)}%`, "CTR"]}
                         contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: 12 }}
                       />
-                      <Bar dataKey="leads" radius={[0, 6, 6, 0]} maxBarSize={28}>
-                        {topByLeads.map((_, i) => (
-                          <Cell key={i} fill={`hsl(${220 + i * 15}, 70%, ${58 - i * 3}%)`} />
+                      <Bar dataKey={metaTotalLeads > 0 ? "leads" : "ctrPct"} radius={[0, 6, 6, 0]} maxBarSize={28}>
+                        {chartData.map((_, i) => (
+                          <Cell key={i} fill={metaTotalLeads > 0
+                            ? `hsl(${220 + i * 15}, 70%, ${58 - i * 3}%)`
+                            : `hsl(${180 + i * 10}, 65%, ${55 - i * 3}%)`}
+                          />
                         ))}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </SpotlightCard>
               )}
+
+              {/* Best campaign banner */}
+              {bestCampaign && (() => {
+                const ctr = bestCampaign.impressions > 0 ? bestCampaign.clicks / bestCampaign.impressions * 100 : 0;
+                return (
+                  <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm">
+                    <span className="text-base">🏆</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">Melhor CTR:</span>
+                    <span className="text-foreground truncate">"{bestCampaign.name}"</span>
+                    <span className="text-muted-foreground ml-auto shrink-0">{ctr.toFixed(2)}%</span>
+                  </div>
+                );
+              })()}
 
               {/* Campaigns table */}
               <SpotlightCard>
@@ -416,30 +448,39 @@ export default function Financeiro() {
                       <tr className="border-b border-border text-muted-foreground text-xs">
                         <th className="text-left py-2 pr-4">Campanha</th>
                         <th className="text-right py-2 px-3">Gasto</th>
+                        <th className="text-right py-2 px-3">Alcance</th>
                         <th className="text-right py-2 px-3">Impressões</th>
                         <th className="text-right py-2 px-3">Cliques</th>
                         <th className="text-right py-2 px-3">CTR</th>
+                        <th className="text-right py-2 px-3">CPM</th>
+                        <th className="text-right py-2 px-3">CPC</th>
                         <th className="text-right py-2 px-3">Leads</th>
-                        <th className="text-right py-2 px-3">CPL</th>
-                        <th className="text-right py-2 pl-3">Conversão</th>
+                        <th className="text-right py-2 pl-3">CPL</th>
                       </tr>
                     </thead>
                     <tbody>
                       {campaigns.map(c => {
                         const ctr = c.impressions > 0 ? (c.clicks / c.impressions * 100) : 0;
-                        const conv = c.clicks > 0 ? (c.leads / c.clicks * 100) : 0;
+                        const cpc = c.clicks > 0 ? c.spend / c.clicks : null;
+                        const cpm = c.impressions > 0 ? (c.spend / c.impressions) * 1000 : null;
+                        const aboveAvgCtr = metaAvgCtr !== null && ctr > metaAvgCtr;
+                        const belowAvgCtr = metaAvgCtr !== null && c.impressions > 0 && ctr < metaAvgCtr;
                         return (
                           <tr key={c.name} className="border-b border-border/50 hover:bg-muted/30">
-                            <td className="py-2 pr-4 font-medium max-w-[200px] truncate">{c.name}</td>
+                            <td className="py-2 pr-4 font-medium max-w-[180px] truncate">{c.name}</td>
                             <td className="text-right py-2 px-3 font-mono text-xs">{fmtBRL(c.spend)}</td>
+                            <td className="text-right py-2 px-3 text-xs">{c.reach.toLocaleString("pt-BR")}</td>
                             <td className="text-right py-2 px-3 text-xs">{c.impressions.toLocaleString("pt-BR")}</td>
                             <td className="text-right py-2 px-3 text-xs">{c.clicks.toLocaleString("pt-BR")}</td>
-                            <td className="text-right py-2 px-3 text-xs">{c.impressions > 0 ? `${ctr.toFixed(2)}%` : "—"}</td>
+                            <td className={`text-right py-2 px-3 text-xs font-medium ${aboveAvgCtr ? "text-emerald-500" : belowAvgCtr ? "text-red-400" : ""}`}>
+                              {c.impressions > 0 ? `${ctr.toFixed(2)}%` : "—"}
+                            </td>
+                            <td className="text-right py-2 px-3 font-mono text-xs">{cpm !== null ? fmtBRL(cpm) : "—"}</td>
+                            <td className="text-right py-2 px-3 font-mono text-xs">{cpc !== null ? fmtBRL(cpc) : "—"}</td>
                             <td className="text-right py-2 px-3">
                               <span className="inline-flex items-center justify-center min-w-[2rem] rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs px-2 py-0.5">{c.leads}</span>
                             </td>
-                            <td className="text-right py-2 px-3 font-mono text-xs">{c.leads > 0 ? fmtBRL(c.spend / c.leads) : "—"}</td>
-                            <td className="text-right py-2 pl-3 text-xs">{c.clicks > 0 ? `${conv.toFixed(1)}%` : "—"}</td>
+                            <td className="text-right py-2 pl-3 font-mono text-xs">{c.leads > 0 ? fmtBRL(c.spend / c.leads) : "—"}</td>
                           </tr>
                         );
                       })}
