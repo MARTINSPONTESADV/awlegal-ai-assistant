@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { supabaseMarketing } from "@/integrations/supabase/clientMarketing";
 import { SpotlightCard } from "@/components/SpotlightCard";
 import { DonutChart } from "@/components/DonutChart";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +54,7 @@ export default function Financeiro() {
         supabase.from("processos").select("id, numero_cnj, numero_processo, prognostico, fase, fase_id, status_processual, valor_causa, valor_execucao, valor_acordo, valor_sentenca, honorarios_percentual, status_pagamento_honorarios, cliente_id, situacao"),
         supabase.from("clientes").select("id, nome_completo"),
         supabase.from("aux_fases").select("id, nome"),
-        supabase.from("meta_ads_insights").select("date, campaign_id, campaign_name, adset_name, spend, impressions, clicks, reach, cpc, ctr, cpm, leads").order("date", { ascending: false }).limit(500),
+        supabaseMarketing.from("meta_ads_insights").select("date, campaign_id, campaign_name, adset_name, spend, impressions, clicks, reach, cpc, ctr, cpm, leads").order("date", { ascending: false }).limit(500),
       ]);
       if (p) setProcessos(p as ProcessoFinanceiro[]);
       if (c) { const map: Record<string, string> = {}; c.forEach((cl: any) => { map[cl.id] = cl.nome_completo; }); setClientes(map); }
