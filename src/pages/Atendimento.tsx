@@ -421,8 +421,11 @@ export default function Atendimento() {
 
   const toggleBot = async () => {
     if (!currentChat || !selectedChat) return;
+    setLoadingBot(true);
     const previousVal = currentChat.bot_ativo;
     const newVal = !previousVal;
+
+    // Optimistic update
     setRawLeads((prev) =>
       prev.map((c: any) =>
         c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: newVal } : c
@@ -430,33 +433,96 @@ export default function Atendimento() {
     );
 
     try {
-      const { error } = await supabase
+      console.log("[toggleBot] Atualizando bot_ativo:", { selectedChat, previousVal, newVal });
+
+      // 1) Tenta update via Supabase JS client (.select() para verificar linhas afetadas)
+      const { data: updated, error } = await supabase
         .from("controle_bot")
-        .update({ bot_ativo: newVal })
-        .eq("whatsapp_numero", selectedChat);
+        .update({ bot_ativo: newVal } as any)
+        .eq("whatsapp_numero", selectedChat)
+        .select("whatsapp_numero, bot_ativo");
 
-      if (error) throw error;
+      console.log("[toggleBot] Resposta Supabase:", { updated, error });
 
-      // Quando reativar o bot, limpar também o Redis block (TTL 24h deixado por "equipe ResolvaJá chegou")
+      if (error) {
+        console.error("[toggleBot] Erro explícito:", error);
+        throw error;
+      }
+
+      // 2) Verifica se alguma linha foi realmente atualizada (RLS pode bloquear silenciosamente)
+      if (!updated || updated.length === 0) {
+        console.warn("[toggleBot] UPDATE retornou 0 linhas — RLS pode estar bloqueando. Tentando fallback REST...");
+
+        // Fallback: REST direto via PostgREST com Prefer: return=representation
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+        const session = (await supabase.auth.getSession()).data.session;
+        const authToken = session?.access_token || supabaseKey;
+
+        const restRes = await fetch(
+          `${supabaseUrl}/rest/v1/controle_bot?whatsapp_numero=eq.${encodeURIComponent(selectedChat)}`,
+          {
+            method: "PATCH",
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${authToken}`,
+              "Content-Type": "application/json",
+              "Prefer": "return=representation",
+            },
+            body: JSON.stringify({ bot_ativo: newVal }),
+          }
+        );
+
+        const restData = await restRes.json().catch(() => []);
+        console.log("[toggleBot] Fallback REST:", { status: restRes.status, data: restData });
+
+        if (!restRes.ok || !Array.isArray(restData) || restData.length === 0) {
+          throw new Error(`UPDATE falhou — verifique as RLS policies da tabela controle_bot (status: ${restRes.status})`);
+        }
+      }
+
+      // 3) Verificação final: confirma que o DB realmente mudou
+      const { data: check } = await supabase
+        .from("controle_bot")
+        .select("bot_ativo")
+        .eq("whatsapp_numero", selectedChat)
+        .single();
+
+      console.log("[toggleBot] Verificação final:", check);
+
+      if (check && check.bot_ativo !== newVal) {
+        console.error("[toggleBot] FALHA: DB ainda mostra bot_ativo =", check.bot_ativo, "esperado:", newVal);
+        throw new Error("Atualização não persistiu no banco");
+      }
+
+      // 4) Quando reativar o bot, limpar também o Redis block
       if (newVal) {
         fetch("https://awlegaltech-n8n.cloudfy.live/webhook/reativar-bot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ numero: selectedChat }),
-        }).catch(() => {}); // best-effort, não bloqueia o fluxo
+        }).catch(() => {});
       }
 
       toast({
-        title: newVal ? "Robô Ativado" : "Robô Pausado — Humano Assumiu",
+        title: newVal ? "Robô Ativado ✅" : "Robô Pausado — Humano Assumiu ✅",
         description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
       });
-    } catch {
+    } catch (err: any) {
+      console.error("[toggleBot] ERRO TOTAL:", err);
+      // Reverte o optimistic update
       setRawLeads((prev) =>
         prev.map((c: any) =>
           c.whatsapp_numero === selectedChat ? { ...c, bot_ativo: previousVal } : c
         )
       );
-      toast({ title: "Erro ao alterar status do robô", variant: "destructive" });
+      toast({
+        title: "Erro ao alterar status do robô",
+        description: err?.message || "Verifique as permissões RLS da tabela controle_bot",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingBot(false);
     }
   };
 
