@@ -394,7 +394,10 @@ export default function Atendimento() {
   // Mantém ref sincronizada sem recriar o channel global
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
 
-  const currentChat = conversasComputadas.find((c: any) => c.whatsapp_numero === selectedChat);
+  // currentChat busca em filteredChats (já filtrado pela aba/canal atual)
+  // para que o canal do contato corresponda à aba que o usuário está vendo
+  const currentChat = filteredChats.find((c: any) => c.whatsapp_numero === selectedChat)
+    || conversasComputadas.find((c: any) => c.whatsapp_numero === selectedChat);
 
   useEffect(() => {
     if (currentChat) {
@@ -419,8 +422,8 @@ export default function Atendimento() {
     toast({ title: trimmed ? `Contato renomeado para "${trimmed}"` : "Nome removido" });
   };
 
-  // O bot só opera no canal Resolva Já; contatos MP não devem ter toggle
-  const isBotChannel = currentChat?.canal !== "martins_pontes";
+  // Bot só opera no canal Resolva Já — na aba MP não existe toggle
+  const isBotChannel = canal !== "martins_pontes";
 
   const toggleBot = async () => {
     if (!currentChat || !selectedChat || !isBotChannel) return;
