@@ -419,8 +419,11 @@ export default function Atendimento() {
     toast({ title: trimmed ? `Contato renomeado para "${trimmed}"` : "Nome removido" });
   };
 
+  // O bot só opera no canal Resolva Já; contatos MP não devem ter toggle
+  const isBotChannel = currentChat?.canal !== "martins_pontes";
+
   const toggleBot = async () => {
-    if (!currentChat || !selectedChat) return;
+    if (!currentChat || !selectedChat || !isBotChannel) return;
     setLoadingBot(true);
     const previousVal = currentChat.bot_ativo;
     const newVal = !previousVal;
@@ -435,67 +438,47 @@ export default function Atendimento() {
     try {
       console.log("[toggleBot] Atualizando bot_ativo:", { selectedChat, previousVal, newVal });
 
-      // 1) Tenta update via Supabase JS client (.select() para verificar linhas afetadas)
-      const { data: updated, error } = await supabase
-        .from("controle_bot")
-        .update({ bot_ativo: newVal } as any)
-        .eq("whatsapp_numero", selectedChat)
-        .select("whatsapp_numero, bot_ativo");
+      // REST direto via PostgREST — evita problemas com types desatualizados do Supabase JS
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const session = (await supabase.auth.getSession()).data.session;
+      const authToken = session?.access_token || supabaseKey;
 
-      console.log("[toggleBot] Resposta Supabase:", { updated, error });
-
-      if (error) {
-        console.error("[toggleBot] Erro explícito:", error);
-        throw error;
-      }
-
-      // 2) Verifica se alguma linha foi realmente atualizada (RLS pode bloquear silenciosamente)
-      if (!updated || updated.length === 0) {
-        console.warn("[toggleBot] UPDATE retornou 0 linhas — RLS pode estar bloqueando. Tentando fallback REST...");
-
-        // Fallback: REST direto via PostgREST com Prefer: return=representation
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-        const session = (await supabase.auth.getSession()).data.session;
-        const authToken = session?.access_token || supabaseKey;
-
-        const restRes = await fetch(
-          `${supabaseUrl}/rest/v1/controle_bot?whatsapp_numero=eq.${encodeURIComponent(selectedChat)}`,
-          {
-            method: "PATCH",
-            headers: {
-              "apikey": supabaseKey,
-              "Authorization": `Bearer ${authToken}`,
-              "Content-Type": "application/json",
-              "Prefer": "return=representation",
-            },
-            body: JSON.stringify({ bot_ativo: newVal }),
-          }
-        );
-
-        const restData = await restRes.json().catch(() => []);
-        console.log("[toggleBot] Fallback REST:", { status: restRes.status, data: restData });
-
-        if (!restRes.ok || !Array.isArray(restData) || restData.length === 0) {
-          throw new Error(`UPDATE falhou — verifique as RLS policies da tabela controle_bot (status: ${restRes.status})`);
+      const restRes = await fetch(
+        `${supabaseUrl}/rest/v1/controle_bot?whatsapp_numero=eq.${encodeURIComponent(selectedChat)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+          },
+          body: JSON.stringify({ bot_ativo: newVal }),
         }
+      );
+
+      const restData = await restRes.json().catch(() => []);
+      console.log("[toggleBot] REST response:", { status: restRes.status, rows: restData?.length, data: restData });
+
+      if (!restRes.ok) {
+        throw new Error(`HTTP ${restRes.status}: ${JSON.stringify(restData)}`);
       }
 
-      // 3) Verificação final: confirma que o DB realmente mudou
-      const { data: check } = await supabase
-        .from("controle_bot")
-        .select("bot_ativo")
-        .eq("whatsapp_numero", selectedChat)
-        .single();
-
-      console.log("[toggleBot] Verificação final:", check);
-
-      if (check && check.bot_ativo !== newVal) {
-        console.error("[toggleBot] FALHA: DB ainda mostra bot_ativo =", check.bot_ativo, "esperado:", newVal);
-        throw new Error("Atualização não persistiu no banco");
+      if (!Array.isArray(restData) || restData.length === 0) {
+        throw new Error("UPDATE retornou 0 linhas — verifique as RLS policies da tabela controle_bot");
       }
 
-      // 4) Quando reativar o bot, limpar também o Redis block
+      // Verifica que o valor realmente mudou na resposta
+      const dbVal = restData[0]?.bot_ativo;
+      if (dbVal !== newVal) {
+        console.error("[toggleBot] DB retornou bot_ativo =", dbVal, "esperado:", newVal);
+        throw new Error("Valor não persistiu no banco");
+      }
+
+      console.log("[toggleBot] ✅ Persistido com sucesso! bot_ativo =", newVal);
+
+      // Quando reativar o bot, limpar também o Redis block
       if (newVal) {
         fetch("https://awlegaltech-n8n.cloudfy.live/webhook/reativar-bot", {
           method: "POST",
@@ -509,7 +492,7 @@ export default function Atendimento() {
         description: newVal ? "O bot voltou a responder." : "Você assumiu o atendimento.",
       });
     } catch (err: any) {
-      console.error("[toggleBot] ERRO TOTAL:", err);
+      console.error("[toggleBot] ERRO:", err);
       // Reverte o optimistic update
       setRawLeads((prev) =>
         prev.map((c: any) =>
@@ -800,7 +783,7 @@ export default function Atendimento() {
         {(currentChat.nome || currentChat.nome_contato) && (
           <p className="text-xs text-muted-foreground font-mono">{formatPhone(selectedChat || "")}</p>
         )}
-        {canal !== "martins_pontes" && (
+        {isBotChannel && (
           <Badge
             variant="outline"
             className={cn(
@@ -816,7 +799,7 @@ export default function Atendimento() {
       </div>
 
       <div className="space-y-2">
-        {canal !== "martins_pontes" && (
+        {isBotChannel && (
           <Button
             onClick={toggleBot}
             disabled={loadingBot}
