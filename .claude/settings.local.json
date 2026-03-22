@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \":*)",
+      "Bash(bun add:*)",
+      "Bash(npm install:*)",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "Bash(npm run:*)",
+      "Bash(npm test:*)",
+      "Bash(curl -s -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiMTlkZjI5Yi1mMmNmLTQzZjQtOWQxMS0wYWE2ZDgzZDRkM2UiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzczNTU4NjYyfQ._FpyX99Y8mHQb2JY9WhKxlzOxstsSjQdqfZONLwvg0Q\" https://awlegaltech-n8n.cloudfy.live/api/v1/workflows/YQK92VBopZtOCFim)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d.keys\\(\\)\\)\\)\")",
+      "Bash(curl -s -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiMTlkZjI5Yi1mMmNmLTQzZjQtOWQxMS0wYWE2ZDgzZDRkM2UiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzczNTU4NjYyfQ._FpyX99Y8mHQb2JY9WhKxlzOxstsSjQdqfZONLwvg0Q\" \"https://awlegaltech-n8n.cloudfy.live/api/v1/workflows?limit=50\")",
+      "Bash(curl -s -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiMTlkZjI5Yi1mMmNmLTQzZjQtOWQxMS0wYWE2ZDgzZDRkM2UiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzczNTU4NjYyfQ._FpyX99Y8mHQb2JY9WhKxlzOxstsSjQdqfZONLwvg0Q\" https://awlegaltech-n8n.cloudfy.live/api/v1/workflows/z9O5nM8Z8mqZZ7lT)",
+      "Bash(python3:*)",
+      "Bash(curl:*)",
+      "Bash(echo \"Status: $?\")",
+      "Bash(\"C:/tmp/workflow_YQK92.json\")",
+      "Bash(\"C:/tmp/workflow_YQK92_response.json\")",
+      "Bash(\"C:/tmp/workflow_YQK92_response2.json\")",
+      "Bash(\"C:/tmp/workflow_YQK92_response3.json\")",
+      "mcp__claude_ai_Supabase__list_projects",
+      "Bash(echo $TEMP)",
+      "Read(//c/Users/winic/OneDrive/Desktop/REPOSITORY AWSYSTEM/awlegal-ai-assistant/$TEMP/**)",
+      "Bash(WINTEMP=\"C:/Users/winic/AppData/Local/Temp\")",
+      "Bash(API_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiMTlkZjI5Yi1mMmNmLTQzZjQtOWQxMS0wYWE2ZDgzZDRkM2UiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzczNTU4NjYyfQ._FpyX99Y8mHQb2JY9WhKxlzOxstsSjQdqfZONLwvg0Q\")",
+      "Bash(__NEW_LINE_f43aaa86c0da5615__ curl:*)",
+      "Bash(__NEW_LINE_4dc447b8dce9d259__ curl:*)"
+    ]
+  }
+}

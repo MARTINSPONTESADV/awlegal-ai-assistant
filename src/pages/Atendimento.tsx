@@ -15,8 +15,11 @@ import {
 import {
   Bot, BotOff, Send, Phone, User, Circle,
   Search, Briefcase, Menu, Info, Pencil, Check, X, Building2, Zap,
-  Archive, ArchiveRestore, MessageSquare, Paperclip, FileText
+  Archive, ArchiveRestore, MessageSquare, Paperclip, FileText, Settings
 } from "lucide-react";
+import QuickReplyPopover from "@/components/atendimento/QuickReplyPopover";
+import AtendimentoSettings from "@/components/atendimento/AtendimentoSettings";
+import type { QuickReply } from "@/components/atendimento/QuickReplyPopover";
 import { cn } from "@/lib/utils";
 import { formatInTimeZone } from "date-fns-tz";
 import ChatMediaRenderer from "@/components/atendimento/ChatMediaRenderer";
@@ -26,6 +29,9 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manual-aw";
 
 type Canal = "resolva_ja" | "martins_pontes";
+
+const FUNIL_STAGES = ["Triagem", "Qualificado", "Assinatura", "Fechado"] as const;
+type FunilStage = typeof FUNIL_STAGES[number];
 
 // ── Timezone helpers (America/Manaus = UTC-4) ──
 const TZ = "America/Manaus";
@@ -93,6 +99,11 @@ export default function Atendimento() {
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [quickReplyFilter, setQuickReplyFilter] = useState("");
+  const [leadStage, setLeadStage] = useState<string>("Triagem");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -275,6 +286,30 @@ export default function Atendimento() {
         return timeB - timeA;
       });
   }, [conversasComputadas, searchTerm, canal, showArchived]);
+
+  // ── Carrega respostas rápidas do banco ──
+  useEffect(() => {
+    (supabase as any)
+      .from("mensagens_rapidas")
+      .select("*")
+      .order("ordem", { ascending: true })
+      .then(({ data }: { data: QuickReply[] | null }) => {
+        if (data) setQuickReplies(data);
+      });
+  }, []);
+
+  // ── Carrega etapa do funil quando troca de chat ──
+  useEffect(() => {
+    if (!selectedChat) return;
+    (supabase as any)
+      .from("controle_atendimento")
+      .select("status_funil")
+      .eq("whatsapp_id", selectedChat)
+      .maybeSingle()
+      .then(({ data }: { data: { status_funil: string } | null }) => {
+        setLeadStage(data?.status_funil || "Triagem");
+      });
+  }, [selectedChat]);
 
   // ── Carrega mensagens do chat selecionado ──
   useEffect(() => {
@@ -639,6 +674,35 @@ export default function Atendimento() {
     }
   };
 
+  // ── Quick replies ──
+  const handleMsgChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setNewMsg(val);
+    if (val) setAttachedFile(null);
+    if (val.startsWith("/")) {
+      setQuickReplyFilter(val.slice(1));
+      setShowQuickReplies(true);
+    } else {
+      setShowQuickReplies(false);
+      setQuickReplyFilter("");
+    }
+  };
+
+  const selectQuickReply = (conteudo: string) => {
+    setNewMsg(conteudo);
+    setShowQuickReplies(false);
+    setQuickReplyFilter("");
+  };
+
+  // ── Etapa do funil ──
+  const handleStageChange = async (stage: string) => {
+    if (!selectedChat) return;
+    setLeadStage(stage);
+    await (supabase as any)
+      .from("controle_atendimento")
+      .upsert({ whatsapp_id: selectedChat, status_funil: stage }, { onConflict: "whatsapp_id" });
+  };
+
   const isOutgoing = (msg: Mensagem) => {
     const origem = msg.origem?.toLowerCase();
     return origem === "bot" || origem === "advogado";
@@ -701,9 +765,18 @@ export default function Atendimento() {
         <div className="flex-1 overflow-x-auto">
           {canalSelector}
         </div>
-        <Button 
-          variant={showArchived ? "secondary" : "default"} 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground hover:bg-white/[0.08]"
+          onClick={() => setSettingsOpen(true)}
+          title="Respostas rápidas"
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
+        <Button
+          variant={showArchived ? "secondary" : "default"}
+          size="icon"
           className={cn("h-8 w-8 shrink-0 relative transition-all", !showArchived && "bg-white/[0.04] text-muted-foreground hover:text-foreground hover:bg-white/[0.08]")}
           onClick={() => setShowArchived(!showArchived)}
           title={showArchived ? "Ver conversas ativas" : "Ver conversas arquivadas"}
@@ -846,6 +919,52 @@ export default function Atendimento() {
             {currentChat.bot_ativo ? "🤖 Bot Ativo" : "👤 Humano"}
           </Badge>
         )}
+      </div>
+
+      {/* ── Etapa no funil ── */}
+      <div className="w-full">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">Etapa no Funil</p>
+        {/* Barra de progresso */}
+        <div className="flex gap-0.5 mb-2">
+          {FUNIL_STAGES.map((stage) => {
+            const currentIdx = FUNIL_STAGES.indexOf((leadStage || "Triagem") as FunilStage);
+            const stageIdx = FUNIL_STAGES.indexOf(stage);
+            return (
+              <div
+                key={stage}
+                className={cn(
+                  "flex-1 h-1 rounded-full transition-all duration-300",
+                  stageIdx <= currentIdx ? "bg-violet-500" : "bg-white/[0.08]"
+                )}
+              />
+            );
+          })}
+        </div>
+        {/* Botões de etapa */}
+        <div className="grid grid-cols-2 gap-1">
+          {FUNIL_STAGES.map((stage) => {
+            const currentIdx = FUNIL_STAGES.indexOf((leadStage || "Triagem") as FunilStage);
+            const stageIdx = FUNIL_STAGES.indexOf(stage);
+            const isActive = leadStage === stage;
+            const isPast = stageIdx < currentIdx;
+            return (
+              <button
+                key={stage}
+                onClick={() => handleStageChange(stage)}
+                className={cn(
+                  "text-[10px] px-2 py-1.5 rounded-lg font-medium transition-all border text-center",
+                  isActive
+                    ? "bg-violet-500/20 border-violet-400/40 text-violet-300"
+                    : isPast
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400/70 hover:bg-emerald-500/15"
+                      : "bg-white/[0.03] border-white/[0.07] text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
+                )}
+              >
+                {isPast ? "✓ " : ""}{stage}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -1124,14 +1243,33 @@ export default function Atendimento() {
                 {/* Input e botão Send — ocultos durante gravação */}
                 {!isRecordingAudio && (
                   <>
-                    <Input
-                      placeholder="Digite uma mensagem..."
-                      value={newMsg}
-                      onChange={(e) => { setNewMsg(e.target.value); if (e.target.value) setAttachedFile(null); }}
-                      onKeyDown={(e) => e.key === "Enter" && (attachedFile ? handleFileSend() : sendMessage())}
-                      className="flex-1 bg-white/[0.04] border-white/[0.08] focus-visible:ring-violet-400/40 h-11"
-                      disabled={sending || uploadingFile}
-                    />
+                    <div className="flex-1 relative">
+                      {showQuickReplies && (
+                        <QuickReplyPopover
+                          templates={quickReplies}
+                          filter={quickReplyFilter}
+                          onSelect={selectQuickReply}
+                          onClose={() => setShowQuickReplies(false)}
+                        />
+                      )}
+                      <Input
+                        placeholder="Digite / para respostas rápidas..."
+                        value={newMsg}
+                        onChange={handleMsgChange}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape" && showQuickReplies) {
+                            setShowQuickReplies(false);
+                            return;
+                          }
+                          if (e.key === "Enter" && !showQuickReplies) {
+                            attachedFile ? handleFileSend() : sendMessage();
+                          }
+                        }}
+                        onBlur={() => setTimeout(() => setShowQuickReplies(false), 150)}
+                        className="w-full bg-white/[0.04] border-white/[0.08] focus-visible:ring-violet-400/40 h-11"
+                        disabled={sending || uploadingFile}
+                      />
+                    </div>
                     <Button
                       onClick={attachedFile ? handleFileSend : sendMessage}
                       size="icon"
@@ -1179,6 +1317,13 @@ export default function Atendimento() {
           {rightPanelContent}
         </div>
       )}
+
+      {/* ── Settings: respostas rápidas ── */}
+      <AtendimentoSettings
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onTemplatesChange={setQuickReplies}
+      />
     </div>
   );
 }

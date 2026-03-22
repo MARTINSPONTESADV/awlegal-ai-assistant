@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Phone } from "lucide-react";
 
-const FUNIL_STAGES = ["Triagem", "Qualificação", "Proposta", "Fechamento"];
+const FUNIL_STAGES = ["Triagem", "Qualificado", "Assinatura", "Fechado"];
 
 interface Lead {
   numero: string;
