@@ -30,8 +30,14 @@ const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manu
 
 type Canal = "resolva_ja" | "martins_pontes";
 
-const FUNIL_STAGES = ["Triagem", "Qualificado", "Assinatura", "Fechado"] as const;
-type FunilStage = typeof FUNIL_STAGES[number];
+const RJ_STAGES  = ["Triagem", "Qualificado"] as const;
+const MP_STAGES  = ["Assinatura", "Fechado"]  as const;
+type FunilStage  = "Triagem" | "Qualificado" | "Assinatura" | "Fechado";
+
+// Retorna os últimos 8 dígitos do número (chave de deduplicação independente de formato)
+function phoneKey(num: string): string {
+  return num.replace(/\D/g, "").slice(-8);
+}
 
 // ── Timezone helpers (America/Manaus = UTC-4) ──
 const TZ = "America/Manaus";
@@ -108,6 +114,10 @@ export default function Atendimento() {
   const [newContactPhone, setNewContactPhone] = useState("");
   const [newContactMsg, setNewContactMsg] = useState("Olá! Entrando em contato pela Martins Pontes Advocacia. 👋");
   const [creatingContact, setCreatingContact] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [atendenteName, setAtendenteName] = useState(() => localStorage.getItem("mp_atendente") || "João Winícius");
+  const [transferMsgs, setTransferMsgs] = useState<{ text: string; enabled: boolean }[]>([]);
+  const [transferring, setTransferring] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -302,7 +312,7 @@ export default function Atendimento() {
         const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
         return timeB - timeA;
       });
-  }, [conversasComputadas, searchTerm, canal, showArchived]);
+  }, [conversasComputadas, searchTerm, canal, showArchived, stageFilter]);
 
   // ── Carrega respostas rápidas do banco ──
   useEffect(() => {
@@ -704,6 +714,7 @@ export default function Atendimento() {
   // ── Etapa do funil ──
   const handleStageChange = async (stage: string) => {
     if (!selectedChat) return;
+    const anterior = (currentChat as any)?.status_funil || null;
     // Optimistic update no rawLeads para refletir imediatamente
     setRawLeads((prev) =>
       prev.map((c: any) =>
@@ -713,6 +724,11 @@ export default function Atendimento() {
     await (supabase as any)
       .from("controle_atendimento")
       .upsert({ whatsapp_id: selectedChat, status_funil: stage }, { onConflict: "whatsapp_id" });
+    // Registra histórico de mudança para métricas de tempo por estágio
+    (supabase as any)
+      .from("historico_funil")
+      .insert({ whatsapp_id: selectedChat, canal, status_anterior: anterior, status_novo: stage })
+      .then(() => {});
   };
 
   // ── Criar contato no canal MP ──
@@ -726,6 +742,25 @@ export default function Atendimento() {
     const msg = newContactMsg.trim() || "Olá! Entrando em contato pela Martins Pontes Advocacia. 👋";
     setCreatingContact(true);
     try {
+      // Dedup: verifica se já existe contato MP com os mesmos últimos 8 dígitos
+      const existing = rawLeads.find((l: any) =>
+        l.canal === "martins_pontes" && phoneKey(l.whatsapp_numero) === phoneKey(numero)
+      );
+      if (existing) {
+        // Envia pelo número real (já conhecido pelo Evolution API), sem criar duplicata
+        await fetch(N8N_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tipo: "text", numero: existing.whatsapp_numero, mensagem: msg, canal: "martins_pontes" }),
+        });
+        setNewContactOpen(false);
+        setNewContactPhone("");
+        setNewContactMsg("Olá! Entrando em contato pela Martins Pontes Advocacia. 👋");
+        setSelectedChat(existing.whatsapp_numero);
+        toast({ title: "Mensagem enviada para contato existente!" });
+        return;
+      }
+
       await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -735,18 +770,14 @@ export default function Atendimento() {
         .from("controle_atendimento")
         .upsert({ whatsapp_id: numero, status_funil: "Assinatura", modulo_origem: "martins_pontes" },
                  { onConflict: "whatsapp_id" });
-      // Adiciona otimisticamente ao rawLeads
-      setRawLeads((prev) => {
-        if (prev.some((l: any) => l.whatsapp_numero === numero && l.canal === "martins_pontes")) return prev;
-        return [...prev, {
-          whatsapp_numero: numero,
-          canal: "martins_pontes",
-          bot_ativo: false,
-          arquivado: false,
-          status_funil: "Assinatura",
-          historico_mensagens: [{ conteudo: msg, tipo_midia: "texto", created_at: new Date().toISOString() }],
-        }];
-      });
+      setRawLeads((prev) => [...prev, {
+        whatsapp_numero: numero,
+        canal: "martins_pontes",
+        bot_ativo: false,
+        arquivado: false,
+        status_funil: "Assinatura",
+        historico_mensagens: [{ conteudo: msg, tipo_midia: "texto", created_at: new Date().toISOString() }],
+      }]);
       setNewContactOpen(false);
       setNewContactPhone("");
       setNewContactMsg("Olá! Entrando em contato pela Martins Pontes Advocacia. 👋");
@@ -782,6 +813,72 @@ export default function Atendimento() {
     setSelectedChat(numero);
     markAsRead(numero);
     if (isMobile) setLeftDrawerOpen(false);
+  };
+
+  // ── Transferir lead RJ → MP ──
+  const openTransfer = () => {
+    const nome = (currentChat as any)?.nomeExibicao || "cliente";
+    const atd = atendenteName;
+    setTransferMsgs([
+      { text: `Bom dia, ${nome}! Bem-vindo ao escritório Martins Pontes, me chamo ${atd}, vou dar continuidade ao seu atendimento!`, enabled: true },
+      { text: `Esse é o nosso perfil do Instagram caso queira conhecer mais sobre o escritório!\nhttps://instagram.com/martinspontes.adv\nSomos um escritório com mais de 100 clientes por todo o Brasil, com processos no Amazonas, Pará e até Santa Catarina. Lutamos pelos consumidores do Brasil todo!`, enabled: true },
+      { text: `Esses são os documentos necessários para que possamos entrar com a ação:\n\n1- RG ou CPF\n2- Comprovante de residência no seu nome\n\nAssim que me enviar esses documentos irei gerar um contrato e uma procuração para você assinar. Fico no aguardo! 😄👍`, enabled: true },
+    ]);
+    setTransferOpen(true);
+  };
+
+  const transferToMP = async () => {
+    if (!selectedChat) return;
+    setTransferring(true);
+    localStorage.setItem("mp_atendente", atendenteName);
+    try {
+      const msgsParaEnviar = transferMsgs.filter((m) => m.enabled && m.text.trim());
+      for (const m of msgsParaEnviar) {
+        await fetch(N8N_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tipo: "text", numero: selectedChat, mensagem: m.text, canal: "martins_pontes" }),
+        });
+      }
+      await (supabase as any)
+        .from("controle_atendimento")
+        .upsert({ whatsapp_id: selectedChat, status_funil: "Assinatura", modulo_origem: "martins_pontes" },
+                 { onConflict: "whatsapp_id" });
+      (supabase as any)
+        .from("historico_funil")
+        .insert({ whatsapp_id: selectedChat, canal: "martins_pontes", status_anterior: leadStage, status_novo: "Assinatura" })
+        .then(() => {});
+      // Garante entrada MP em rawLeads (sem duplicata por phoneKey)
+      const numReal = selectedChat;
+      setRawLeads((prev) => {
+        const jaExiste = prev.some((l: any) => l.canal === "martins_pontes" && phoneKey(l.whatsapp_numero) === phoneKey(numReal));
+        if (jaExiste) {
+          return prev.map((l: any) =>
+            l.canal === "martins_pontes" && phoneKey(l.whatsapp_numero) === phoneKey(numReal)
+              ? { ...l, status_funil: "Assinatura" } : l
+          );
+        }
+        return [...prev, {
+          whatsapp_numero: numReal,
+          canal: "martins_pontes",
+          bot_ativo: false,
+          arquivado: false,
+          status_funil: "Assinatura",
+          historico_mensagens: msgsParaEnviar.length > 0
+            ? [{ conteudo: msgsParaEnviar[0].text, tipo_midia: "texto", created_at: new Date().toISOString() }]
+            : [],
+        }];
+      });
+      setTransferOpen(false);
+      setCanal("martins_pontes");
+      setSelectedChat(null);
+      setTimeout(() => setSelectedChat(numReal), 120);
+      toast({ title: "Lead transferido para o canal Martins Pontes! ✅" });
+    } catch {
+      toast({ title: "Erro ao transferir lead", variant: "destructive" });
+    } finally {
+      setTransferring(false);
+    }
   };
 
   // ── Canal Selector ──
@@ -865,7 +962,7 @@ export default function Atendimento() {
       </div>
       {/* Stage filter chips */}
       <div className="px-3 pb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-        {(["Todos", ...(canal === "martins_pontes" ? ["Assinatura", "Fechado"] : FUNIL_STAGES)] as string[]).map((s) => (
+        {(["Todos", ...(canal === "martins_pontes" ? [...MP_STAGES] : [...RJ_STAGES])] as string[]).map((s) => (
           <button
             key={s}
             onClick={() => setStageFilter(s === "Todos" ? null : s)}
@@ -1011,9 +1108,9 @@ export default function Atendimento() {
       <div className="w-full">
         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">Etapa no Funil</p>
         {(() => {
-          const visibleStages = canal === "martins_pontes"
-            ? (["Assinatura", "Fechado"] as FunilStage[])
-            : [...FUNIL_STAGES];
+          const visibleStages: FunilStage[] = canal === "martins_pontes"
+            ? [...MP_STAGES]
+            : [...RJ_STAGES];
           const currentIdx = visibleStages.indexOf((leadStage || visibleStages[0]) as FunilStage);
           return (
             <>
@@ -1150,7 +1247,17 @@ export default function Atendimento() {
         </div>
       </div>
 
-      <div className="border-t border-white/[0.06] pt-4">
+      <div className="border-t border-white/[0.06] pt-4 space-y-2">
+        {canal !== "martins_pontes" && (
+          <Button
+            variant="outline"
+            className="w-full border-cyan-400/20 text-cyan-300 hover:bg-cyan-500/10"
+            onClick={openTransfer}
+          >
+            <Building2 className="h-4 w-4 mr-2" />
+            Transferir para MP
+          </Button>
+        )}
         <Button
           variant="outline"
           className="w-full border-white/[0.08] hover:bg-white/[0.05]"
@@ -1411,6 +1518,57 @@ export default function Atendimento() {
           {rightPanelContent}
         </div>
       )}
+
+      {/* ── Sheet: Transferir RJ → MP ── */}
+      <Sheet open={transferOpen} onOpenChange={setTransferOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl pb-8 max-w-2xl mx-auto max-h-[88vh] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-cyan-400" /> Transferir para Martins Pontes
+            </SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 mt-4">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Nome do atendente</label>
+              <Input
+                value={atendenteName}
+                onChange={(e) => setAtendenteName(e.target.value)}
+                placeholder="Ex: Tiago Beckman"
+                className="text-base"
+              />
+            </div>
+            {transferMsgs.map((msg, i) => (
+              <div key={i} className="border border-white/[0.08] rounded-xl p-3 space-y-2 bg-white/[0.02]">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={msg.enabled}
+                    onChange={(e) => setTransferMsgs((prev) => prev.map((m, j) => j === i ? { ...m, enabled: e.target.checked } : m))}
+                    className="accent-cyan-400 h-4 w-4"
+                  />
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {["Apresentação", "Instagram do escritório", "Documentos necessários"][i]}
+                  </span>
+                </div>
+                <textarea
+                  value={msg.text}
+                  onChange={(e) => setTransferMsgs((prev) => prev.map((m, j) => j === i ? { ...m, text: e.target.value } : m))}
+                  rows={4}
+                  disabled={!msg.enabled}
+                  className="w-full resize-none rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-cyan-400/40 disabled:opacity-40"
+                />
+              </div>
+            ))}
+            <Button
+              onClick={transferToMP}
+              disabled={transferring || transferMsgs.filter((m) => m.enabled).length === 0}
+              className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+            >
+              {transferring ? "Enviando..." : `Transferir e Enviar ${transferMsgs.filter((m) => m.enabled).length} mensagem(ns)`}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* ── Sheet: Novo Contato MP ── */}
       <Sheet open={newContactOpen} onOpenChange={setNewContactOpen}>
