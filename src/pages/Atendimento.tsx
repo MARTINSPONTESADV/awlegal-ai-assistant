@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,8 +18,7 @@ import {
   Archive, ArchiveRestore, MessageSquare, Paperclip, FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { formatInTimeZone } from "date-fns-tz";
 import ChatMediaRenderer from "@/components/atendimento/ChatMediaRenderer";
 import AudioRecorder from "@/components/atendimento/AudioRecorder";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -27,6 +26,30 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manual-aw";
 
 type Canal = "resolva_ja" | "martins_pontes";
+
+// ── Timezone helpers (America/Manaus = UTC-4) ──
+const TZ = "America/Manaus";
+
+function fmtHora(d: string | null | undefined): string {
+  if (!d) return "";
+  try { return formatInTimeZone(new Date(d), TZ, "HH:mm"); } catch { return ""; }
+}
+
+function fmtDataHora(d: string | null | undefined): string {
+  if (!d) return "";
+  try { return formatInTimeZone(new Date(d), TZ, "dd/MM HH:mm"); } catch { return ""; }
+}
+
+function fmtDataLabel(d: string): string {
+  try {
+    const hoje = formatInTimeZone(new Date(), TZ, "yyyy-MM-dd");
+    const ontem = formatInTimeZone(new Date(Date.now() - 86400000), TZ, "yyyy-MM-dd");
+    const dia = formatInTimeZone(new Date(d), TZ, "yyyy-MM-dd");
+    if (dia === hoje) return "Hoje";
+    if (dia === ontem) return "Ontem";
+    return formatInTimeZone(new Date(d), TZ, "dd/MM/yyyy");
+  } catch { return ""; }
+}
 
 // ── FORA DO COMPONENTE: funções puras sem problema de hoisting ──
 function formatPhone(id: string): string {
@@ -142,7 +165,7 @@ export default function Atendimento() {
             whatsapp_numero: phone,
             canal: "martins_pontes",
             bot_ativo: cb?.bot_ativo ?? false,
-            arquivado: cb?.arquivado ?? false,
+            arquivado: cb?.arquivado_mp ?? false, // Bug 6: usa campo separado por canal
             historico_mensagens: [lastMsg],
           };
         });
@@ -205,6 +228,12 @@ export default function Atendimento() {
       const lastTime = lead.historico_mensagens?.[0]?.created_at || undefined;
       // Fallback triplo de segurança para o nome
       const nomeExibicao = lead.nome || lead.nome_contato || formatPhone(lead.whatsapp_numero || "") || "Desconhecido";
+      // Bug 2: timeLabel com timezone America/Manaus — mostra hora se hoje, data+hora se mais antigo
+      const timeLabel = lastTime
+        ? (formatInTimeZone(new Date(lastTime), TZ, "yyyy-MM-dd") === formatInTimeZone(new Date(), TZ, "yyyy-MM-dd")
+            ? fmtHora(lastTime)
+            : fmtDataHora(lastTime))
+        : undefined;
 
       // Prévia da mensagem
       const ultimaMensagem = tipo === "audio"
@@ -223,6 +252,7 @@ export default function Atendimento() {
         ultimaMensagem,
         tipoMidia: tipo,
         lastTime,
+        timeLabel,
         // Normalização de campos seguros
         whatsapp_numero: lead.whatsapp_numero || "",
         bot_ativo: lead.bot_ativo ?? null,
@@ -317,9 +347,10 @@ export default function Atendimento() {
           const isIncoming = nova.direcao === "entrada" || nova.origem === "cliente";
           const novaCanal = nova.canal || null;
 
-          // Verifica se já existe entrada para esse contato+canal
+          // Verifica se já existe entrada para esse contato+canal (null e "resolva_ja" são equivalentes)
           const jaExisteNoCanal = prev.some(
-            (c: any) => c.whatsapp_numero === remetente && (c.canal ?? null) === novaCanal
+            (c: any) => c.whatsapp_numero === remetente
+              && (c.canal || "resolva_ja") === (novaCanal || "resolva_ja")
           );
 
           // Se é nova mensagem MP de contato que ainda não está na lista, adiciona
@@ -339,12 +370,18 @@ export default function Atendimento() {
           // Caso normal: atualiza preview do contato existente (mesma lógica original)
           return prev.map((c: any) => {
             if (c.whatsapp_numero !== remetente) return c;
-            if ((c.canal ?? null) !== novaCanal) return c; // não polui canal errado
-            // Se contato estava arquivado e mandou nova mensagem, desarquiva automaticamente
+            // Bug 4: null e "resolva_ja" são equivalentes no canal
+            if ((c.canal || "resolva_ja") !== (novaCanal || "resolva_ja")) return c;
+            // Bug 1: desarquiva usando campo correto por canal
             const deveDesarquivar = isIncoming && c.arquivado;
             if (deveDesarquivar) {
-              supabase.from("controle_bot").update({ arquivado: false } as any)
-                .eq("whatsapp_numero", remetente);
+              if (c.canal === "martins_pontes") {
+                supabase.from("controle_bot").update({ arquivado_mp: false } as any)
+                  .eq("whatsapp_numero", remetente);
+              } else {
+                supabase.from("controle_bot").update({ arquivado: false } as any)
+                  .eq("whatsapp_numero", remetente);
+              }
             }
             return {
               ...c,
@@ -376,11 +413,26 @@ export default function Atendimento() {
         setRawLeads((prev) =>
           prev.map((c: any) => {
             if (c.whatsapp_numero !== atualizado.whatsapp_numero) return c;
+
+            // Bug 3: validar nome antes de aplicar — rejeita frases genéricas do bot
+            const newNome = atualizado.nome_contato || atualizado.nome;
+            const FRASES_GENERICAS = ["olá", "ola!", "como posso", "parece que", "buscando", "entendido", "posso ajudar", "claro,", "entendo"];
+            const isNomeValido = newNome
+              && newNome.trim().length >= 2
+              && newNome.trim().length <= 50
+              && !FRASES_GENERICAS.some((f: string) => newNome.toLowerCase().includes(f));
+
+            // Bug 1: sincronizar arquivado por canal (MP usa arquivado_mp mapeado como arquivado)
+            const isMP = c.canal === "martins_pontes";
+            const novoArquivado = isMP
+              ? (atualizado.arquivado_mp ?? c.arquivado)
+              : (atualizado.arquivado ?? c.arquivado);
+
             return {
               ...c,
-              nome: atualizado.nome || atualizado.nome_contato || c.nome,
-              nome_contato: atualizado.nome_contato || atualizado.nome || c.nome_contato,
-              arquivado: atualizado.arquivado ?? c.arquivado,
+              nome: isNomeValido ? newNome : c.nome,
+              nome_contato: isNomeValido ? newNome : c.nome_contato,
+              arquivado: novoArquivado,
               bot_ativo: atualizado.bot_ativo ?? c.bot_ativo,
             };
           })
@@ -698,7 +750,7 @@ export default function Atendimento() {
                 <div className="h-10 w-10 rounded-full bg-violet-500/15 ring-1 ring-violet-400/20 flex items-center justify-center">
                   <Phone className="h-4 w-4 text-violet-400" />
                 </div>
-                {chat.bot_ativo && (
+                {chat.bot_ativo && canal !== "martins_pontes" && (
                   <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-background" />
                 )}
               </div>
@@ -708,9 +760,9 @@ export default function Atendimento() {
                   <span className="text-sm font-semibold text-foreground truncate pr-4">
                     {chat.nomeExibicao}
                   </span>
-                  {chat.lastTime && (
+                  {chat.timeLabel && (
                     <span className={cn("text-[10px] shrink-0 font-medium", chat.unread_count ? "text-emerald-400" : "text-muted-foreground")}>
-                      {format(new Date(chat.lastTime), "HH:mm")}
+                      {chat.timeLabel}
                     </span>
                   )}
                 </div>
@@ -729,18 +781,20 @@ export default function Atendimento() {
                   ) : null}
                 </div>
                 
-                <div className="flex items-center justify-between gap-1 mt-1.5 opacity-80">
-                  <div className="flex items-center gap-1">
-                    {chat.bot_ativo ? (
-                      <Bot className="h-3.5 w-3.5 text-violet-400" />
-                    ) : (
-                      <User className="h-3.5 w-3.5 text-amber-400" />
-                    )}
-                    <span className="text-[11px] text-muted-foreground/90 font-medium tracking-tight">
-                      {chat.bot_ativo ? "Bot ativo" : "Humano"}
-                    </span>
+                {canal !== "martins_pontes" && (
+                  <div className="flex items-center justify-between gap-1 mt-1.5 opacity-80">
+                    <div className="flex items-center gap-1">
+                      {chat.bot_ativo ? (
+                        <Bot className="h-3.5 w-3.5 text-violet-400" />
+                      ) : (
+                        <User className="h-3.5 w-3.5 text-amber-400" />
+                      )}
+                      <span className="text-[11px] text-muted-foreground/90 font-medium tracking-tight">
+                        {chat.bot_ativo ? "Bot ativo" : "Humano"}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </button>
           ))
@@ -825,10 +879,29 @@ export default function Atendimento() {
           className="w-full border-white/[0.08] hover:bg-white/[0.05] text-muted-foreground hover:text-foreground"
           onClick={async () => {
             const novoStatus = !(currentChat.arquivado || false);
+            const isMP = canal === "martins_pontes";
             try {
-              const { error } = await supabase.from("controle_bot").update({ arquivado: novoStatus } as any).eq("whatsapp_numero", selectedChat);
+              let error;
+              if (isMP) {
+                // Bug 1: MP usa campo separado (upsert pois o contato pode não ter row em controle_bot)
+                const res = await supabase.from("controle_bot")
+                  .upsert({ whatsapp_numero: selectedChat, arquivado_mp: novoStatus } as any,
+                           { onConflict: "whatsapp_numero" });
+                error = res.error;
+              } else {
+                const res = await supabase.from("controle_bot")
+                  .update({ arquivado: novoStatus } as any)
+                  .eq("whatsapp_numero", selectedChat);
+                error = res.error;
+              }
               if (error) throw error;
-              setRawLeads(prev => prev.map((c: any) => c.whatsapp_numero === selectedChat ? { ...c, arquivado: novoStatus } : c));
+              // Atualiza apenas a entrada do canal correto no rawLeads
+              const canalAtual = canal;
+              setRawLeads(prev => prev.map((c: any) =>
+                c.whatsapp_numero === selectedChat && c.canal === canalAtual
+                  ? { ...c, arquivado: novoStatus }
+                  : c
+              ));
               if (novoStatus) setSelectedChat(null);
               toast({ title: novoStatus ? "Conversa arquivada" : "Conversa retornada das arquivadas" });
             } catch (err) {
@@ -864,7 +937,7 @@ export default function Atendimento() {
             <div className="flex justify-between">
               <span className="text-muted-foreground text-xs">Última interação</span>
               <span className="text-foreground text-xs font-mono">
-                {format(new Date(currentChat.last_intercept), "dd/MM HH:mm")}
+                {fmtDataHora(currentChat.last_intercept)}
               </span>
             </div>
           )}
@@ -929,7 +1002,7 @@ export default function Atendimento() {
                     {currentChat?.nomeExibicao || formatPhone(selectedChat)}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
-                    {currentChat?.bot_ativo ? "🤖 Bot ativo" : "👤 Humano atendendo"}
+                    {canal === "martins_pontes" ? "Canal Martins Pontes" : (currentChat?.bot_ativo ? "🤖 Bot ativo" : "👤 Humano atendendo")}
                   </p>
                 </div>
               </div>
@@ -961,31 +1034,47 @@ export default function Atendimento() {
             {/* Messages */}
             <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 min-h-0 min-w-0 bg-background/30 w-full relative">
               <div className="space-y-3 max-w-3xl mx-auto w-full">
-                {mensagens.map((msg) => {
+                {mensagens.map((msg, idx) => {
                   const outgoing = isOutgoing(msg);
+                  const dataLabel = msg.created_at ? fmtDataLabel(msg.created_at) : null;
+                  const prevDataLabel = idx > 0 && mensagens[idx - 1].created_at
+                    ? fmtDataLabel(mensagens[idx - 1].created_at!)
+                    : null;
+                  const showDateSep = dataLabel && dataLabel !== prevDataLabel;
                   return (
-                    <div key={msg.id} className={cn("flex", outgoing ? "justify-end" : "justify-start")}>
-                      <div
-                        className={cn(
-                          "max-w-[85%] sm:max-w-[72%] rounded-2xl px-4 py-2.5 text-sm shadow-sm",
-                          outgoing
-                            ? "bg-violet-600/80 text-white rounded-br-sm backdrop-blur-sm"
-                            : "bg-white/[0.06] text-foreground rounded-bl-sm border border-white/[0.07] backdrop-blur-sm"
-                        )}
-                      >
-                        {msg.origem && (
-                          <p className={cn("text-[9px] font-semibold uppercase mb-0.5 tracking-wide", outgoing ? "text-violet-200/70" : "text-muted-foreground/70")}>
-                            {msg.origem}
-                          </p>
-                        )}
-                        <ChatMediaRenderer conteudo={msg.conteudo || ""} tipo_midia={msg.tipo_midia} media_url={msg.media_url} outgoing={outgoing} />
-                        {msg.created_at && (
-                          <p className={cn("text-[10px] mt-1 font-mono", outgoing ? "text-violet-200/50 text-right" : "text-muted-foreground/60")}>
-                            {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
-                          </p>
-                        )}
+                    <Fragment key={msg.id}>
+                      {showDateSep && (
+                        <div className="flex items-center gap-2 my-4">
+                          <div className="flex-1 h-px bg-white/[0.07]" />
+                          <span className="text-[11px] text-muted-foreground/60 font-medium px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06]">
+                            {dataLabel}
+                          </span>
+                          <div className="flex-1 h-px bg-white/[0.07]" />
+                        </div>
+                      )}
+                      <div className={cn("flex", outgoing ? "justify-end" : "justify-start")}>
+                        <div
+                          className={cn(
+                            "max-w-[85%] sm:max-w-[72%] rounded-2xl px-4 py-2.5 text-sm shadow-sm",
+                            outgoing
+                              ? "bg-violet-600/80 text-white rounded-br-sm backdrop-blur-sm"
+                              : "bg-white/[0.06] text-foreground rounded-bl-sm border border-white/[0.07] backdrop-blur-sm"
+                          )}
+                        >
+                          {msg.origem && (
+                            <p className={cn("text-[9px] font-semibold uppercase mb-0.5 tracking-wide", outgoing ? "text-violet-200/70" : "text-muted-foreground/70")}>
+                              {msg.origem}
+                            </p>
+                          )}
+                          <ChatMediaRenderer conteudo={msg.conteudo || ""} tipo_midia={msg.tipo_midia} media_url={msg.media_url} outgoing={outgoing} />
+                          {msg.created_at && (
+                            <p className={cn("text-[10px] mt-1 font-mono", outgoing ? "text-violet-200/50 text-right" : "text-muted-foreground/60")}>
+                              {fmtHora(msg.created_at)}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    </Fragment>
                   );
                 })}
                 <div ref={messagesEndRef} />
