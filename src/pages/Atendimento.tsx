@@ -15,7 +15,7 @@ import {
 import {
   Bot, BotOff, Send, Phone, User, Circle,
   Search, Briefcase, Menu, Info, Pencil, Check, X, Building2, Zap,
-  Archive, ArchiveRestore, MessageSquare, Paperclip, FileText, Settings, UserPlus
+  Archive, ArchiveRestore, MessageSquare, Paperclip, FileText, Settings, UserPlus, Trash2
 } from "lucide-react";
 import QuickReplyPopover from "@/components/atendimento/QuickReplyPopover";
 import AtendimentoSettings from "@/components/atendimento/AtendimentoSettings";
@@ -31,8 +31,8 @@ const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manu
 type Canal = "resolva_ja" | "martins_pontes";
 
 const RJ_STAGES  = ["Triagem", "Qualificado"] as const;
-const MP_STAGES  = ["Assinatura", "Fechado"]  as const;
-type FunilStage  = "Triagem" | "Qualificado" | "Assinatura" | "Fechado";
+const MP_STAGES  = ["Documentação", "Assinatura", "Fechado"] as const;
+type FunilStage  = "Triagem" | "Qualificado" | "Documentação" | "Assinatura" | "Fechado";
 
 // Retorna os últimos 8 dígitos do número (chave de deduplicação independente de formato)
 function phoneKey(num: string): string {
@@ -127,8 +127,8 @@ export default function Atendimento() {
   useEffect(() => {
     async function load() {
       try {
-        // Query limpa: busca TODOS os leads (a coluna arquivado não existe nessa tabela)
-        const { data, error } = await supabase.from("controle_bot").select("*");
+        // Query limpa: exclui contatos marcados como excluídos
+        const { data, error } = await (supabase as any).from("controle_bot").select("*").neq("excluido", true);
         if (error) {
           console.error("[Atendimento] Erro ao carregar controle_bot:", error);
           setRawLeads([]);
@@ -183,17 +183,24 @@ export default function Atendimento() {
           mpMap.set(msg.whatsapp_id, msg);
         }
 
-        const mpLeads = Array.from(mpMap.entries()).map(([phone, lastMsg]) => {
-          const cb = enriched.find((l: any) => l.whatsapp_numero === phone);
-          return {
-            ...(cb || {}),
-            whatsapp_numero: phone,
-            canal: "martins_pontes",
-            bot_ativo: cb?.bot_ativo ?? false,
-            arquivado: cb?.arquivado_mp ?? false, // Bug 6: usa campo separado por canal
-            historico_mensagens: [lastMsg],
-          };
-        });
+        // Set de números excluídos (para filtrar MP provenientes de historico_mensagens)
+        const excludedSet = new Set(
+          (data || []).filter((l: any) => l.excluido === true).map((l: any) => l.whatsapp_numero)
+        );
+
+        const mpLeads = Array.from(mpMap.entries())
+          .filter(([phone]) => !excludedSet.has(phone))
+          .map(([phone, lastMsg]) => {
+            const cb = enriched.find((l: any) => l.whatsapp_numero === phone);
+            return {
+              ...(cb || {}),
+              whatsapp_numero: phone,
+              canal: "martins_pontes",
+              bot_ativo: cb?.bot_ativo ?? false,
+              arquivado: cb?.arquivado_mp ?? false,
+              historico_mensagens: [lastMsg],
+            };
+          });
 
         // ── Carrega contatos RJ de historico_mensagens (contatos MP que tbm usam RJ) ──
         const { data: rjRaw } = await supabase
@@ -263,8 +270,8 @@ export default function Atendimento() {
       const mensagem = lead.historico_mensagens?.[0]?.conteudo || "Iniciou conversa";
       const tipo = lead.historico_mensagens?.[0]?.tipo_midia || "texto";
       const lastTime = lead.historico_mensagens?.[0]?.created_at || undefined;
-      // Fallback triplo de segurança para o nome
-      const nomeExibicao = lead.nome || lead.nome_contato || formatPhone(lead.whatsapp_numero || "") || "Desconhecido";
+      // nome_contato = nome curado (GPT + edição manual) tem prioridade sobre nome (pushName bruto do WA)
+      const nomeExibicao = lead.nome_contato || lead.nome || formatPhone(lead.whatsapp_numero || "") || "Desconhecido";
 
       // Prévia da mensagem
       const ultimaMensagem = tipo === "audio"
@@ -731,6 +738,22 @@ export default function Atendimento() {
       .then(() => {});
   };
 
+  // ── Excluir contato permanentemente ──
+  const deleteContact = async () => {
+    if (!selectedChat || !currentChat) return;
+    const confirmar = window.confirm(
+      `Excluir "${currentChat.nomeExibicao}"? O contato será removido permanentemente da lista.`
+    );
+    if (!confirmar) return;
+    await (supabase as any)
+      .from("controle_bot")
+      .upsert({ whatsapp_numero: selectedChat, excluido: true } as any,
+               { onConflict: "whatsapp_numero" });
+    setRawLeads((prev) => prev.filter((l: any) => l.whatsapp_numero !== selectedChat));
+    setSelectedChat(null);
+    toast({ title: "Contato excluído" });
+  };
+
   // ── Criar contato no canal MP ──
   const createMPContact = async () => {
     const digits = newContactPhone.replace(/\D/g, "");
@@ -768,14 +791,14 @@ export default function Atendimento() {
       });
       await (supabase as any)
         .from("controle_atendimento")
-        .upsert({ whatsapp_id: numero, status_funil: "Assinatura", modulo_origem: "martins_pontes" },
+        .upsert({ whatsapp_id: numero, status_funil: "Documentação", modulo_origem: "martins_pontes" },
                  { onConflict: "whatsapp_id" });
       setRawLeads((prev) => [...prev, {
         whatsapp_numero: numero,
         canal: "martins_pontes",
         bot_ativo: false,
         arquivado: false,
-        status_funil: "Assinatura",
+        status_funil: "Documentação",
         historico_mensagens: [{ conteudo: msg, tipo_midia: "texto", created_at: new Date().toISOString() }],
       }]);
       setNewContactOpen(false);
@@ -842,11 +865,11 @@ export default function Atendimento() {
       }
       await (supabase as any)
         .from("controle_atendimento")
-        .upsert({ whatsapp_id: selectedChat, status_funil: "Assinatura", modulo_origem: "martins_pontes" },
+        .upsert({ whatsapp_id: selectedChat, status_funil: "Documentação", modulo_origem: "martins_pontes" },
                  { onConflict: "whatsapp_id" });
       (supabase as any)
         .from("historico_funil")
-        .insert({ whatsapp_id: selectedChat, canal: "martins_pontes", status_anterior: leadStage, status_novo: "Assinatura" })
+        .insert({ whatsapp_id: selectedChat, canal: "martins_pontes", status_anterior: leadStage, status_novo: "Documentação" })
         .then(() => {});
       // Garante entrada MP em rawLeads (sem duplicata por phoneKey)
       const numReal = selectedChat;
@@ -855,7 +878,7 @@ export default function Atendimento() {
         if (jaExiste) {
           return prev.map((l: any) =>
             l.canal === "martins_pontes" && phoneKey(l.whatsapp_numero) === phoneKey(numReal)
-              ? { ...l, status_funil: "Assinatura" } : l
+              ? { ...l, status_funil: "Documentação" } : l
           );
         }
         return [...prev, {
@@ -863,7 +886,7 @@ export default function Atendimento() {
           canal: "martins_pontes",
           bot_ativo: false,
           arquivado: false,
-          status_funil: "Assinatura",
+          status_funil: "Documentação",
           historico_mensagens: msgsParaEnviar.length > 0
             ? [{ conteudo: msgsParaEnviar[0].text, tipo_midia: "texto", created_at: new Date().toISOString() }]
             : [],
@@ -1218,6 +1241,13 @@ export default function Atendimento() {
           ) : (
             <><Archive className="h-4 w-4 mr-2" /> Arquivar Conversa</>
           )}
+        </Button>
+        <Button
+          variant="ghost"
+          className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 border border-destructive/20"
+          onClick={deleteContact}
+        >
+          <Trash2 className="h-4 w-4 mr-2" /> Excluir Contato
         </Button>
       </div>
 
