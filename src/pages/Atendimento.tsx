@@ -228,12 +228,6 @@ export default function Atendimento() {
       const lastTime = lead.historico_mensagens?.[0]?.created_at || undefined;
       // Fallback triplo de segurança para o nome
       const nomeExibicao = lead.nome || lead.nome_contato || formatPhone(lead.whatsapp_numero || "") || "Desconhecido";
-      // Bug 2: timeLabel com timezone America/Manaus — mostra hora se hoje, data+hora se mais antigo
-      const timeLabel = lastTime
-        ? (formatInTimeZone(new Date(lastTime), TZ, "yyyy-MM-dd") === formatInTimeZone(new Date(), TZ, "yyyy-MM-dd")
-            ? fmtHora(lastTime)
-            : fmtDataHora(lastTime))
-        : undefined;
 
       // Prévia da mensagem
       const ultimaMensagem = tipo === "audio"
@@ -252,7 +246,6 @@ export default function Atendimento() {
         ultimaMensagem,
         tipoMidia: tipo,
         lastTime,
-        timeLabel,
         // Normalização de campos seguros
         whatsapp_numero: lead.whatsapp_numero || "",
         bot_ativo: lead.bot_ativo ?? null,
@@ -760,9 +753,9 @@ export default function Atendimento() {
                   <span className="text-sm font-semibold text-foreground truncate pr-4">
                     {chat.nomeExibicao}
                   </span>
-                  {chat.timeLabel && (
+                  {chat.lastTime && (
                     <span className={cn("text-[10px] shrink-0 font-medium", chat.unread_count ? "text-emerald-400" : "text-muted-foreground")}>
-                      {chat.timeLabel}
+                      {fmtHora(chat.lastTime)}
                     </span>
                   )}
                 </div>
