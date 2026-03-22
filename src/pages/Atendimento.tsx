@@ -15,7 +15,7 @@ import {
 import {
   Bot, BotOff, Send, Phone, User, Circle,
   Search, Briefcase, Menu, Info, Pencil, Check, X, Building2, Zap,
-  Archive, ArchiveRestore, MessageSquare, Paperclip, FileText, Settings
+  Archive, ArchiveRestore, MessageSquare, Paperclip, FileText, Settings, UserPlus
 } from "lucide-react";
 import QuickReplyPopover from "@/components/atendimento/QuickReplyPopover";
 import AtendimentoSettings from "@/components/atendimento/AtendimentoSettings";
@@ -102,8 +102,12 @@ export default function Atendimento() {
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [quickReplyFilter, setQuickReplyFilter] = useState("");
-  const [leadStage, setLeadStage] = useState<string>("Triagem");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [stageFilter, setStageFilter] = useState<string | null>(null);
+  const [newContactOpen, setNewContactOpen] = useState(false);
+  const [newContactPhone, setNewContactPhone] = useState("");
+  const [newContactMsg, setNewContactMsg] = useState("Olá! Entrando em contato pela Martins Pontes Advocacia. 👋");
+  const [creatingContact, setCreatingContact] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -220,8 +224,20 @@ export default function Atendimento() {
           return true;
         });
 
+        // Carrega estágios do funil em batch para habilitar filtro por stage
+        const { data: stagesData } = await (supabase as any)
+          .from("controle_atendimento")
+          .select("whatsapp_id, status_funil");
+        const stagesMap: Record<string, string> = {};
+        (stagesData || []).forEach((s: any) => { if (s.whatsapp_id) stagesMap[s.whatsapp_id] = s.status_funil; });
+
+        const withStages = combined.map((lead: any) => ({
+          ...lead,
+          status_funil: stagesMap[lead.whatsapp_numero] || "Triagem",
+        }));
+
         console.log("[Atendimento] Leads carregados:", combined.length, "(RJ:", enriched.length, "MP:", mpLeads.length, ")");
-        setRawLeads(combined);
+        setRawLeads(withStages);
       } catch (err) {
         console.error("[Atendimento] Exceção fatal:", err);
         setRawLeads([]);
@@ -278,7 +294,8 @@ export default function Atendimento() {
           : c.canal === "martins_pontes";
         const matchArchived = showArchived ? c.arquivado === true : !c.arquivado;
         const isLid = (c.whatsapp_numero || "").endsWith("@lid");
-        return matchSearch && matchCanal && matchArchived && !isLid;
+        const matchStage = !stageFilter || (c.status_funil || "Triagem") === stageFilter;
+        return matchSearch && matchCanal && matchArchived && matchStage && !isLid;
       })
       .sort((a: any, b: any) => {
         const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
@@ -297,19 +314,6 @@ export default function Atendimento() {
         if (data) setQuickReplies(data);
       });
   }, []);
-
-  // ── Carrega etapa do funil quando troca de chat ──
-  useEffect(() => {
-    if (!selectedChat) return;
-    (supabase as any)
-      .from("controle_atendimento")
-      .select("status_funil")
-      .eq("whatsapp_id", selectedChat)
-      .maybeSingle()
-      .then(({ data }: { data: { status_funil: string } | null }) => {
-        setLeadStage(data?.status_funil || "Triagem");
-      });
-  }, [selectedChat]);
 
   // ── Carrega mensagens do chat selecionado ──
   useEffect(() => {
@@ -501,6 +505,9 @@ export default function Atendimento() {
     setEditingName(false);
     toast({ title: trimmed ? `Contato renomeado para "${trimmed}"` : "Nome removido" });
   };
+
+  // leadStage derivado do currentChat (status_funil carregado em batch no load)
+  const leadStage = (currentChat as any)?.status_funil || "Triagem";
 
   // Bot só opera no canal Resolva Já — na aba MP não existe toggle
   const isBotChannel = canal !== "martins_pontes";
@@ -697,10 +704,59 @@ export default function Atendimento() {
   // ── Etapa do funil ──
   const handleStageChange = async (stage: string) => {
     if (!selectedChat) return;
-    setLeadStage(stage);
+    // Optimistic update no rawLeads para refletir imediatamente
+    setRawLeads((prev) =>
+      prev.map((c: any) =>
+        c.whatsapp_numero === selectedChat ? { ...c, status_funil: stage } : c
+      )
+    );
     await (supabase as any)
       .from("controle_atendimento")
       .upsert({ whatsapp_id: selectedChat, status_funil: stage }, { onConflict: "whatsapp_id" });
+  };
+
+  // ── Criar contato no canal MP ──
+  const createMPContact = async () => {
+    const digits = newContactPhone.replace(/\D/g, "");
+    if (digits.length < 10) {
+      toast({ title: "Número inválido — mínimo 10 dígitos", variant: "destructive" });
+      return;
+    }
+    const numero = digits.startsWith("55") ? digits : `55${digits}`;
+    const msg = newContactMsg.trim() || "Olá! Entrando em contato pela Martins Pontes Advocacia. 👋";
+    setCreatingContact(true);
+    try {
+      await fetch(N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo: "text", numero, mensagem: msg, canal: "martins_pontes" }),
+      });
+      await (supabase as any)
+        .from("controle_atendimento")
+        .upsert({ whatsapp_id: numero, status_funil: "Assinatura", modulo_origem: "martins_pontes" },
+                 { onConflict: "whatsapp_id" });
+      // Adiciona otimisticamente ao rawLeads
+      setRawLeads((prev) => {
+        if (prev.some((l: any) => l.whatsapp_numero === numero && l.canal === "martins_pontes")) return prev;
+        return [...prev, {
+          whatsapp_numero: numero,
+          canal: "martins_pontes",
+          bot_ativo: false,
+          arquivado: false,
+          status_funil: "Assinatura",
+          historico_mensagens: [{ conteudo: msg, tipo_midia: "texto", created_at: new Date().toISOString() }],
+        }];
+      });
+      setNewContactOpen(false);
+      setNewContactPhone("");
+      setNewContactMsg("Olá! Entrando em contato pela Martins Pontes Advocacia. 👋");
+      setSelectedChat(numero);
+      toast({ title: "Contato criado e mensagem enviada!" });
+    } catch {
+      toast({ title: "Erro ao criar contato", variant: "destructive" });
+    } finally {
+      setCreatingContact(false);
+    }
   };
 
   const isOutgoing = (msg: Mensagem) => {
@@ -732,7 +788,7 @@ export default function Atendimento() {
   const canalSelector = (
     <div className="flex rounded-xl overflow-hidden border border-white/[0.08] shrink-0">
       <button
-        onClick={() => { setCanal("resolva_ja"); setSelectedChat(null); }}
+        onClick={() => { setCanal("resolva_ja"); setSelectedChat(null); setStageFilter(null); }}
         className={cn(
           "flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-all",
           canal === "resolva_ja"
@@ -744,7 +800,7 @@ export default function Atendimento() {
         Resolva Já
       </button>
       <button
-        onClick={() => { setCanal("martins_pontes"); setSelectedChat(null); }}
+        onClick={() => { setCanal("martins_pontes"); setSelectedChat(null); setStageFilter(null); }}
         className={cn(
           "flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-all",
           canal === "martins_pontes"
@@ -774,6 +830,17 @@ export default function Atendimento() {
         >
           <Settings className="h-4 w-4" />
         </Button>
+        {canal === "martins_pontes" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-cyan-400 hover:bg-cyan-500/10"
+            onClick={() => setNewContactOpen(true)}
+            title="Novo contato MP"
+          >
+            <UserPlus className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant={showArchived ? "secondary" : "default"}
           size="icon"
@@ -795,6 +862,25 @@ export default function Atendimento() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+      </div>
+      {/* Stage filter chips */}
+      <div className="px-3 pb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {(["Todos", ...(canal === "martins_pontes" ? ["Assinatura", "Fechado"] : FUNIL_STAGES)] as string[]).map((s) => (
+          <button
+            key={s}
+            onClick={() => setStageFilter(s === "Todos" ? null : s)}
+            className={cn(
+              "shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap",
+              (s === "Todos" ? stageFilter === null : stageFilter === s)
+                ? canal === "martins_pontes"
+                  ? "bg-cyan-500/20 border-cyan-400/40 text-cyan-300"
+                  : "bg-violet-500/20 border-violet-400/40 text-violet-300"
+                : "bg-white/[0.03] border-white/[0.07] text-muted-foreground hover:text-foreground hover:bg-white/[0.06]"
+            )}
+          >
+            {s}
+          </button>
+        ))}
       </div>
       <ScrollArea className="flex-1">
         {filteredChats.length === 0 ? (
@@ -826,7 +912,7 @@ export default function Atendimento() {
                   <span className="text-sm font-semibold text-foreground truncate pr-4">
                     {chat.nomeExibicao}
                   </span>
-                  {chat.lastTime && (
+                  {chat.lastTime && chat.canal !== "martins_pontes" && (
                     <span className={cn("text-[10px] shrink-0 font-medium", chat.unread_count ? "text-emerald-400" : "text-muted-foreground")}>
                       {fmtHora(chat.lastTime)}
                     </span>
@@ -840,7 +926,7 @@ export default function Atendimento() {
                     </p>
                   </div>
                   
-                  {chat.unread_count && chat.unread_count > 0 ? (
+                  {chat.unread_count && chat.unread_count > 0 && chat.canal !== "martins_pontes" ? (
                     <div className="bg-emerald-500 text-white rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm">
                       {chat.unread_count}
                     </div>
@@ -924,47 +1010,55 @@ export default function Atendimento() {
       {/* ── Etapa no funil ── */}
       <div className="w-full">
         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">Etapa no Funil</p>
-        {/* Barra de progresso */}
-        <div className="flex gap-0.5 mb-2">
-          {FUNIL_STAGES.map((stage) => {
-            const currentIdx = FUNIL_STAGES.indexOf((leadStage || "Triagem") as FunilStage);
-            const stageIdx = FUNIL_STAGES.indexOf(stage);
-            return (
-              <div
-                key={stage}
-                className={cn(
-                  "flex-1 h-1 rounded-full transition-all duration-300",
-                  stageIdx <= currentIdx ? "bg-violet-500" : "bg-white/[0.08]"
-                )}
-              />
-            );
-          })}
-        </div>
-        {/* Botões de etapa */}
-        <div className="grid grid-cols-2 gap-1">
-          {FUNIL_STAGES.map((stage) => {
-            const currentIdx = FUNIL_STAGES.indexOf((leadStage || "Triagem") as FunilStage);
-            const stageIdx = FUNIL_STAGES.indexOf(stage);
-            const isActive = leadStage === stage;
-            const isPast = stageIdx < currentIdx;
-            return (
-              <button
-                key={stage}
-                onClick={() => handleStageChange(stage)}
-                className={cn(
-                  "text-[10px] px-2 py-1.5 rounded-lg font-medium transition-all border text-center",
-                  isActive
-                    ? "bg-violet-500/20 border-violet-400/40 text-violet-300"
-                    : isPast
-                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400/70 hover:bg-emerald-500/15"
-                      : "bg-white/[0.03] border-white/[0.07] text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
-                )}
-              >
-                {isPast ? "✓ " : ""}{stage}
-              </button>
-            );
-          })}
-        </div>
+        {(() => {
+          const visibleStages = canal === "martins_pontes"
+            ? (["Assinatura", "Fechado"] as FunilStage[])
+            : [...FUNIL_STAGES];
+          const currentIdx = visibleStages.indexOf((leadStage || visibleStages[0]) as FunilStage);
+          return (
+            <>
+              {/* Barra de progresso */}
+              <div className="flex gap-0.5 mb-2">
+                {visibleStages.map((stage, stageIdx) => (
+                  <div
+                    key={stage}
+                    className={cn(
+                      "flex-1 h-1 rounded-full transition-all duration-300",
+                      stageIdx <= currentIdx
+                        ? canal === "martins_pontes" ? "bg-cyan-500" : "bg-violet-500"
+                        : "bg-white/[0.08]"
+                    )}
+                  />
+                ))}
+              </div>
+              {/* Botões de etapa */}
+              <div className={cn("grid gap-1", visibleStages.length === 2 ? "grid-cols-2" : "grid-cols-2")}>
+                {visibleStages.map((stage, stageIdx) => {
+                  const isActive = leadStage === stage;
+                  const isPast = stageIdx < currentIdx;
+                  return (
+                    <button
+                      key={stage}
+                      onClick={() => handleStageChange(stage)}
+                      className={cn(
+                        "text-[10px] px-2 py-1.5 rounded-lg font-medium transition-all border text-center",
+                        isActive
+                          ? canal === "martins_pontes"
+                            ? "bg-cyan-500/20 border-cyan-400/40 text-cyan-300"
+                            : "bg-violet-500/20 border-violet-400/40 text-violet-300"
+                          : isPast
+                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400/70 hover:bg-emerald-500/15"
+                            : "bg-white/[0.03] border-white/[0.07] text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
+                      )}
+                    >
+                      {isPast ? "✓ " : ""}{stage}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       <div className="space-y-2">
@@ -1317,6 +1411,45 @@ export default function Atendimento() {
           {rightPanelContent}
         </div>
       )}
+
+      {/* ── Sheet: Novo Contato MP ── */}
+      <Sheet open={newContactOpen} onOpenChange={setNewContactOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl pb-8 max-w-lg mx-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4 text-cyan-400" /> Novo Contato — Martins Pontes
+            </SheetTitle>
+          </SheetHeader>
+          <div className="space-y-3 mt-4">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Número do WhatsApp</label>
+              <Input
+                placeholder="(92) 9 1234-5678"
+                value={newContactPhone}
+                onChange={(e) => setNewContactPhone(e.target.value)}
+                className="text-base"
+                inputMode="tel"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Primeira mensagem</label>
+              <textarea
+                value={newContactMsg}
+                onChange={(e) => setNewContactMsg(e.target.value)}
+                rows={3}
+                className="w-full resize-none rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-cyan-400/40"
+              />
+            </div>
+            <Button
+              onClick={createMPContact}
+              disabled={creatingContact}
+              className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+            >
+              {creatingContact ? "Enviando..." : "Criar Contato e Enviar Mensagem"}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* ── Settings: respostas rápidas ── */}
       <AtendimentoSettings

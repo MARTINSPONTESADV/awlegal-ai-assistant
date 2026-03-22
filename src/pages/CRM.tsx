@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Phone } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const FUNIL_STAGES = ["Triagem", "Qualificado", "Assinatura", "Fechado"];
 
@@ -13,6 +14,7 @@ interface Lead {
   nome_contato: string | null;
   status_funil: string;
   modulo_origem: string | null;
+  canal: string | null;
 }
 
 export default function CRM() {
@@ -21,7 +23,7 @@ export default function CRM() {
 
   const loadLeads = useCallback(async () => {
     const [{ data: bots }, { data: atend }] = await Promise.all([
-      supabase.from("controle_bot").select("whatsapp_numero, nome_contato"),
+      supabase.from("controle_bot").select("whatsapp_numero, nome_contato, canal"),
       supabase.from("controle_atendimento").select("whatsapp_id, status_funil, modulo_origem"),
     ]);
     if (!bots) return;
@@ -34,6 +36,7 @@ export default function CRM() {
       nome_contato: b.nome_contato,
       status_funil: atendMap[b.whatsapp_numero]?.status_funil || "Triagem",
       modulo_origem: atendMap[b.whatsapp_numero]?.modulo_origem || null,
+      canal: b.canal || null,
     }));
     setLeads(merged);
   }, []);
@@ -88,7 +91,12 @@ export default function CRM() {
                             {lead.nome_contato && (
                               <p className="text-[10px] text-muted-foreground">{formatPhone(lead.numero)}</p>
                             )}
-                            <p className="text-[10px] text-muted-foreground">{lead.modulo_origem || "Resolva Já"}</p>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <p className="text-[10px] text-muted-foreground">{lead.modulo_origem || "Resolva Já"}</p>
+                              <Badge variant="outline" className={cn("text-[9px] px-1 py-0 h-4", lead.canal === "martins_pontes" ? "border-cyan-400/30 text-cyan-300" : "border-violet-400/30 text-violet-300")}>
+                                {lead.canal === "martins_pontes" ? "MP" : "RJ"}
+                              </Badge>
+                            </div>
                             <Select
                               value={lead.status_funil}
                               onValueChange={(v) => moveStage(lead.numero, v)}
