@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { jsonToCsv, downloadCsv } from "@/lib/exportCsv";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ const tables = [
 const auxTables = ["aux_comarcas", "aux_fases", "aux_assuntos"] as const;
 
 export default function Exportar() {
+  useEffect(() => { document.title = "Exportar — AW LEGALTECH"; }, []);
   const [loading, setLoading] = useState<string | null>(null);
 
   const exportTable = async (table: string) => {

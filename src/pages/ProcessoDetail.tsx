@@ -43,6 +43,7 @@ function CurrencyInput({ label, value, onChange }: { label: string; value: numbe
 }
 
 export default function ProcessoDetail() {
+  useEffect(() => { document.title = "Processo — AW LEGALTECH"; }, []);
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();

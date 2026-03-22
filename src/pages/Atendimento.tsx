@@ -85,6 +85,7 @@ interface Mensagem {
 }
 
 export default function Atendimento() {
+  useEffect(() => { document.title = "Atendimento — AW LEGALTECH"; }, []);
   const { toast } = useToast();
   const isMobile = useIsMobile();
 

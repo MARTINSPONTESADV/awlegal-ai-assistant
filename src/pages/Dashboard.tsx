@@ -14,6 +14,7 @@ interface Stats {
 }
 
 export default function Dashboard() {
+  useEffect(() => { document.title = "Dashboard — AW LEGALTECH"; }, []);
   const [stats, setStats] = useState<Stats>({ clientes: 0, processosAtivos: 0, prazosSemana: 0 });
   const [prognosticoData, setPrognosticoData] = useState<{ name: string; value: number }[]>([]);
   const [faseData, setFaseData] = useState<{ name: string; value: number }[]>([]);

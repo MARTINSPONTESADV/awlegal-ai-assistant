@@ -40,6 +40,7 @@ interface MetaAdsInsight {
 }
 
 export default function Financeiro() {
+  useEffect(() => { document.title = "Financeiro — AW LEGALTECH"; }, []);
   const navigate = useNavigate();
   const [processos, setProcessos] = useState<ProcessoFinanceiro[]>([]);
   const [clientes, setClientes] = useState<Record<string, string>>({});

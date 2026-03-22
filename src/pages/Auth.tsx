@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -71,6 +71,7 @@ function FloatingInput({
 }
 
 export default function Auth() {
+  useEffect(() => { document.title = "AW LEGALTECH"; }, []);
   const [loading, setLoading] = useState(false);
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");

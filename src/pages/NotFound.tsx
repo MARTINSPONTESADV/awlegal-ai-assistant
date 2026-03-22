@@ -2,6 +2,7 @@ import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
 
 const NotFound = () => {
+  useEffect(() => { document.title = "Página não encontrada — AW LEGALTECH"; }, []);
   const location = useLocation();
 
   useEffect(() => {

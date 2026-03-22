@@ -45,6 +45,7 @@ interface EditForm {
 }
 
 export default function Agenda() {
+  useEffect(() => { document.title = "Agenda — AW LEGALTECH"; }, []);
   const [items, setItems] = useState<AgendaItem[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [viewMode, setViewMode] = useState<"day" | "week">("week");

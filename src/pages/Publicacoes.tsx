@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export default function Publicacoes() {
+  useEffect(() => { document.title = "Publicações — AW LEGALTECH"; }, []);
   const queryClient = useQueryClient();
   const [dataInicial, setDataInicial] = useState<Date | undefined>();
   const [dataFinal, setDataFinal] = useState<Date | undefined>();

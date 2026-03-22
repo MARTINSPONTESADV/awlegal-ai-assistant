@@ -27,6 +27,7 @@ function daysSince(dateStr: string | undefined): string {
 }
 
 export default function CRM() {
+  useEffect(() => { document.title = "Funil de Vendas — AW LEGALTECH"; }, []);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [funilMap, setFunilMap] = useState<Record<string, { status_novo: string; changed_at: string }>>({});

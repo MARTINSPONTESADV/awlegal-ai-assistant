@@ -4548,6 +4548,65 @@
         -1088
       ],
       "onError": "continueRegularOutput"
+    },
+    {
+      "id": "qualifica-lead-documentacao",
+      "name": "Qualifica Lead — Doc Recebido",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        -32
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://occoggvuaevikpuqnmge.supabase.co/rest/v1/controle_atendimento",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUPABASE_SERVICE_ROLE_REMOVED"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer SUPABASE_SERVICE_ROLE_REMOVED"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "whatsapp_id",
+              "value": "={{ $('Variaveis Globais').item.json.telefone }}"
+            },
+            {
+              "name": "status_funil",
+              "value": "Qualificado"
+            },
+            {
+              "name": "modulo_origem",
+              "value": "resolva_ja"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
     }
   ],
   "connections": {
@@ -5972,9 +6031,9 @@
       "main": [
         [
           {
-            "node": "Merge1",
+            "node": "Qualifica Lead — Doc Recebido",
             "type": "main",
-            "index": 2
+            "index": 0
           }
         ],
         []
@@ -6210,6 +6269,17 @@
           }
         ],
         []
+      ]
+    },
+    "Qualifica Lead — Doc Recebido": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 2
+          }
+        ]
       ]
     }
   },

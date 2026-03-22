@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ interface ProcessoRow { numero_processo: string | null; numero_cnj: string | nul
 const STATUS_OPTIONS = ["Em andamento", "Suspenso", "Encerrado", "Arquivado"];
 
 export default function Relatorios() {
+  useEffect(() => { document.title = "Relatórios — AW LEGALTECH"; }, []);
   const [responsavel, setResponsavel] = useState("");
   const [statusProcessual, setStatusProcessual] = useState("");
   const [comarca, setComarca] = useState("");

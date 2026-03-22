@@ -97,7 +97,9 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
 
   if (error) {
     return (
-      <a href={imageSrc} target="_blank" rel="noopener noreferrer"
+      <a href={imageSrc.startsWith("data:") ? "#" : imageSrc}
+        onClick={(e) => { e.preventDefault(); openDataUri(imageSrc, "imagem.jpg"); }}
+        rel="noopener noreferrer"
         className={cn(
           "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors",
           outgoing ? "bg-violet-500/20 hover:bg-violet-500/30" : "bg-white/[0.06] hover:bg-white/[0.1]"
@@ -123,7 +125,7 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
         alt="Imagem"
         onLoad={() => setLoaded(true)}
         onError={() => setError(true)}
-        onClick={() => window.open(imageSrc, "_blank")}
+        onClick={() => openDataUri(imageSrc, "imagem.jpg")}
         className={cn(
           "rounded-lg max-w-[300px] max-h-[280px] object-cover cursor-pointer transition-all hover:brightness-110 hover:shadow-lg",
           !loaded && "hidden"
@@ -131,7 +133,9 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
       />
       {loaded && (
         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <a href={imageSrc} target="_blank" rel="noopener noreferrer"
+          <a href={imageSrc.startsWith("data:") ? "#" : imageSrc}
+            onClick={(e) => { e.preventDefault(); openDataUri(imageSrc, "imagem.jpg"); }}
+            rel="noopener noreferrer"
             className="h-7 w-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5 text-white" />
@@ -304,15 +308,35 @@ function AudioMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
   );
 }
 
+// ── Converte data URI em Blob URL para download (Chrome 65+ bloqueia data: URIs em <a>) ──
+function openDataUri(dataUri: string, filename: string) {
+  if (dataUri.startsWith("data:")) {
+    const [header, b64] = dataUri.split(",");
+    const mime = header.match(/:(.*?);/)?.[1] || "application/octet-stream";
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } else {
+    window.open(dataUri, "_blank", "noopener,noreferrer");
+  }
+}
+
 // ══════════════════════════════════════════
 // COMPONENTE: Documento/Arquivo Premium
 // ══════════════════════════════════════════
 function DocumentMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
   const ext = getFileExtension(src);
   const name = getFileName(src);
-  
-  const documentSrc = src.startsWith("data:application") || src.startsWith("http") || src.startsWith("blob:") 
-    ? src 
+
+  const documentSrc = src.startsWith("data:application") || src.startsWith("http") || src.startsWith("blob:")
+    ? src
     : `data:application/pdf;base64,${src}`;
 
   const extColorMap: Record<string, string> = {
@@ -330,9 +354,8 @@ function DocumentMessage({ src, outgoing }: { src: string; outgoing: boolean }) 
   return (
     <div className="flex flex-col gap-2 min-w-[220px] max-w-[320px]">
       <a
-        href={documentSrc}
-        download={name}
-        target="_blank"
+        href={documentSrc.startsWith("data:") ? "#" : documentSrc}
+        onClick={(e) => { e.preventDefault(); openDataUri(documentSrc, name); }}
         rel="noopener noreferrer"
         className={cn(
           "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group",

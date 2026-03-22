@@ -151,6 +151,7 @@ function processTemplate(arrayBuffer: ArrayBuffer, cliente: Cliente, extras: { d
 }
 
 export default function Generator() {
+  useEffect(() => { document.title = "Gerador Docs — AW LEGALTECH"; }, []);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<string>("");
   const [dia, setDia] = useState("");
