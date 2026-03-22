@@ -4552,59 +4552,39 @@
     {
       "id": "qualifica-lead-documentacao",
       "name": "Qualifica Lead — Doc Recebido",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
       "position": [
         500,
         -32
       ],
+      "alwaysOutputData": true,
       "parameters": {
-        "method": "POST",
-        "url": "https://occoggvuaevikpuqnmge.supabase.co/rest/v1/controle_atendimento",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
+        "operation": "update",
+        "tableId": "controle_atendimento",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
             {
-              "name": "apikey",
-              "value": "SUPABASE_SERVICE_ROLE_REMOVED"
-            },
-            {
-              "name": "Authorization",
-              "value": "Bearer SUPABASE_SERVICE_ROLE_REMOVED"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Prefer",
-              "value": "resolution=merge-duplicates"
+              "keyName": "whatsapp_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Variaveis Globais').item.json.telefone }}"
             }
           ]
         },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
+        "fieldsUi": {
+          "fieldValues": [
             {
-              "name": "whatsapp_id",
-              "value": "={{ $('Variaveis Globais').item.json.telefone }}"
-            },
-            {
-              "name": "status_funil",
-              "value": "Qualificado"
-            },
-            {
-              "name": "modulo_origem",
-              "value": "resolva_ja"
+              "fieldId": "status_funil",
+              "fieldValue": "Qualificado"
             }
           ]
-        },
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
+        }
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "M1cSxwHgCI6k4aTC",
+          "name": "SUPABASE ESCAVADOR - MP"
         }
       }
     }
