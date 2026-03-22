@@ -10,38 +10,43 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "public");
 
-// Logo AW LEGALTECH — fundo preto, letras roxas geométricas (estilo monograma)
+// Monograma AW LEGALTECH — fundo preto, roxo sólido
+// Estrutura: A (dois diagonais espessos em /\) + W (três barras verticais conectadas)
+// As formas são polígonos preenchidos (não traços) — estilo do logo original
+const SVG = `<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="#0a0a0f"/>
+  <g fill="#7c3aed">
+
+    <!-- LETRA A — perna esquerda (diagonal /) -->
+    <!-- base: x 60→108, topo: x 165→208, apex em y=128 -->
+    <polygon points="60,390 108,390 208,128 165,128"/>
+
+    <!-- LETRA A — perna direita (diagonal \) = também a barra esquerda do W -->
+    <polygon points="165,128 208,128 305,390 258,390"/>
+
+    <!-- LETRA W — conector horizontal no topo das três barras (y=242 a y=284) -->
+    <!-- começa onde a perna direita do A chega em y=242 (~x=262) até o fim do W -->
+    <polygon points="262,242 463,242 463,284 262,284"/>
+
+    <!-- LETRA W — barra central -->
+    <polygon points="338,242 383,242 383,390 338,390"/>
+
+    <!-- LETRA W — barra direita -->
+    <polygon points="418,242 463,242 463,390 418,390"/>
+
+  </g>
+</svg>`;
+
 const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 512px; height: 512px; background: transparent; overflow: hidden; }
+    * { margin: 0; padding: 0; }
+    html, body { width: 512px; height: 512px; overflow: hidden; background: #0a0a0f; }
   </style>
 </head>
-<body>
-  <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-    <!-- Fundo preto -->
-    <rect width="512" height="512" fill="#0a0a0f"/>
-
-    <!-- Monograma AW — traços roxos geométricos -->
-    <g stroke="#8b5cf6" stroke-width="36" stroke-linecap="square" stroke-linejoin="miter" stroke-miterlimit="20" fill="none">
-
-      <!-- Letra A: vértice em (150,70), base de (52,442) a (248,442) -->
-      <polyline points="52,442 150,70 248,442"/>
-      <!-- Barra do A no ponto 38% da altura -->
-      <line x1="90" y1="299" x2="210" y2="299"/>
-
-      <!-- Letra W: de (270,70) até (460,70) com os dois vales em baixo -->
-      <polyline points="270,70 300,442 365,238 430,442 460,70"/>
-
-    </g>
-
-    <!-- Linha decorativa fina embaixo — sutil toque high-tech -->
-    <line x1="52" y1="462" x2="460" y2="462" stroke="#8b5cf6" stroke-width="3" stroke-linecap="square" opacity="0.45"/>
-  </svg>
-</body>
+<body>${SVG}</body>
 </html>`;
 
 const SIZES = [
@@ -57,11 +62,17 @@ async function generate() {
   for (const { size, name } of SIZES) {
     await page.setViewportSize({ width: size, height: size });
     await page.setContent(
-      html.replace('width="512" height="512"', `width="${size}" height="${size}"`),
+      html.replace(
+        'viewBox="0 0 512 512"',
+        `viewBox="0 0 512 512" width="${size}" height="${size}"`
+      ),
       { waitUntil: "networkidle" }
     );
 
-    const buffer = await page.screenshot({ type: "png", clip: { x: 0, y: 0, width: size, height: size } });
+    const buffer = await page.screenshot({
+      type: "png",
+      clip: { x: 0, y: 0, width: size, height: size },
+    });
     writeFileSync(path.join(publicDir, name), buffer);
     console.log(`✅ ${name} (${size}×${size})`);
   }
