@@ -4283,7 +4283,7 @@
             },
             {
               "fieldId": "conteudo",
-              "fieldValue": "=data:application/pdf;base64,{{ $json.base64 }}"
+              "fieldValue": "=data:{{ $('BAIXADOR DO DOCUMENTO EM BASE64').item.json.data.mimetype }};base64,{{ $('BAIXADOR DO DOCUMENTO EM BASE64').item.json.data.base64 }}"
             },
             {
               "fieldId": "canal",
@@ -10588,7 +10588,7 @@
               },
               {
                 "fieldId": "conteudo",
-                "fieldValue": "=data:application/pdf;base64,{{ $json.base64 }}"
+                "fieldValue": "=data:{{ $('BAIXADOR DO DOCUMENTO EM BASE64').item.json.data.mimetype }};base64,{{ $('BAIXADOR DO DOCUMENTO EM BASE64').item.json.data.base64 }}"
               },
               {
                 "fieldId": "canal",
