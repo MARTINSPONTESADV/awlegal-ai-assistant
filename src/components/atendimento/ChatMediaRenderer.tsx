@@ -78,23 +78,35 @@ function resolveMediaType(tipo_midia: string | null, conteudo: string): "audio" 
   return "text";
 }
 
-// ── Converte src em blob URL (funciona para data URIs e HTTP URLs) ──
-async function srcToBlobUrl(src: string): Promise<string> {
+// ── Converte src em Blob (base para todas as operações de arquivo) ──
+async function srcToBlob(src: string): Promise<Blob> {
   if (src.startsWith("data:")) {
     const [header, b64] = src.split(",");
     const mime = header.match(/:(.*?);/)?.[1] || "application/octet-stream";
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-    return URL.createObjectURL(new Blob([bytes], { type: mime }));
+    return new Blob([bytes], { type: mime });
   } else {
     const response = await fetch(src);
-    return URL.createObjectURL(await response.blob());
+    return response.blob();
   }
 }
 
-// ── Download de arquivo — funciona em iOS Safari PWA (sem window.open) ──
+
+// ── Abre/baixa arquivo — Web Share API no mobile (iOS/Android), blob download no desktop ──
 async function downloadFile(src: string, filename: string) {
   try {
-    const blobUrl = await srcToBlobUrl(src);
+    const blob = await srcToBlob(src);
+    const file = new File([blob], filename, { type: blob.type });
+
+    // iOS 15.1+ / Android: share sheet nativo
+    // "Quick Look" = visualizar, "Salvar em Arquivos" = baixar
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    }
+
+    // Desktop: blob URL + <a download>
+    const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = blobUrl;
     a.download = filename;
@@ -103,7 +115,8 @@ async function downloadFile(src: string, filename: string) {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
   } catch {
-    window.open(src, "_blank", "noopener,noreferrer");
+    // Fallback final: HTTP URL → abre no browser
+    if (src.startsWith("http")) window.open(src, "_blank", "noopener,noreferrer");
   }
 }
 
@@ -376,11 +389,20 @@ function DocumentMessage({ src, outgoing }: { src: string; outgoing: boolean }) 
   async function handlePreview() {
     setIsLoadingPreview(true);
     try {
-      const url = await srcToBlobUrl(documentSrc);
-      setBlobSrc(url);
+      const blob = await srcToBlob(documentSrc);
+      const file = new File([blob], name, { type: blob.type });
+
+      // iOS/Android: share sheet — "Quick Look" visualiza o PDF nativamente
+      if (navigator.canShare?.({ files: [file] })) {
+        setIsLoadingPreview(false);
+        await navigator.share({ files: [file], title: name });
+        return;
+      }
+
+      // Desktop: iframe no Dialog
+      setBlobSrc(URL.createObjectURL(blob));
       setShowPreview(true);
     } catch {
-      // fallback: tenta abrir diretamente
       setBlobSrc(documentSrc);
       setShowPreview(true);
     } finally {
