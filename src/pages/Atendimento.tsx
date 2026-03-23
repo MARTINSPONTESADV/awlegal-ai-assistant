@@ -546,7 +546,7 @@ export default function Atendimento() {
     try {
       console.log("[toggleBot] Atualizando bot_ativo:", { selectedChat, previousVal, newVal });
 
-      const { data: rpcData, error: updateError } = await supabase
+      const { data: rpcData, error: updateError } = await (supabase as any)
         .rpc('set_bot_status', { p_numero: selectedChat, p_ativo: newVal });
 
       console.log("[toggleBot] RPC response:", { rows: rpcData?.length, data: rpcData, error: updateError });
