@@ -4587,6 +4587,32 @@
           "name": "SUPABASE ESCAVADOR - MP"
         }
       }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prepara-img-id-001",
+              "name": "id",
+              "value": "={{ $('Edit Fields7').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "prepara-img-text-001",
+              "name": "textMessage",
+              "value": "={{ $('Edit Fields7').item.json.textMessage }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepara-dados-imagem-merge-001",
+      "name": "Prepara Dados Imagem",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [724, -32]
     }
   ],
   "connections": {
@@ -6258,6 +6284,17 @@
       ]
     },
     "Qualifica Lead — Doc Recebido": {
+      "main": [
+        [
+          {
+            "node": "Prepara Dados Imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepara Dados Imagem": {
       "main": [
         [
           {
