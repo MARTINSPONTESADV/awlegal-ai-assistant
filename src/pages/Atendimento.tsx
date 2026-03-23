@@ -613,7 +613,7 @@ export default function Atendimento() {
       setNewMsg("");
       toast({ title: "Mensagem enviada!" });
     } catch {
-      toast({ title: "Erro ao enviar mensagem", variant: "destructive" });
+      toast({ title: "Erro ao enviar mensagem — verifique se o servidor n8n está online", variant: "destructive" });
     } finally {
       setSending(false);
     }
@@ -840,13 +840,23 @@ export default function Atendimento() {
     localStorage.setItem("mp_atendente", atendenteName);
     try {
       const msgsParaEnviar = transferMsgs.filter((m) => m.enabled && m.text.trim());
-      for (const m of msgsParaEnviar) {
-        await fetch(N8N_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tipo: "text", numero: selectedChat, mensagem: m.text, canal: "martins_pontes" }),
-        });
+
+      // ① Envia mensagens via n8n — falha silenciosa se n8n estiver indisponível
+      let webhookOk = true;
+      try {
+        for (const m of msgsParaEnviar) {
+          await fetch(N8N_WEBHOOK_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tipo: "text", numero: selectedChat, mensagem: m.text, canal: "martins_pontes" }),
+          });
+        }
+      } catch (webhookErr) {
+        console.error("[transferToMP] Webhook n8n falhou:", webhookErr);
+        webhookOk = false;
       }
+
+      // ② Atualiza Supabase independentemente do n8n
       await (supabase as any)
         .from("controle_atendimento")
         .upsert({ whatsapp_id: selectedChat, status_funil: "Documentação", modulo_origem: "martins_pontes" },
@@ -855,7 +865,8 @@ export default function Atendimento() {
         .from("historico_funil")
         .insert({ whatsapp_id: selectedChat, canal: "martins_pontes", status_anterior: leadStage, status_novo: "Documentação" })
         .then(() => {});
-      // Garante entrada MP em rawLeads (sem duplicata por phoneKey)
+
+      // ③ Garante entrada MP em rawLeads (sem duplicata por phoneKey)
       const numReal = selectedChat;
       setRawLeads((prev) => {
         const jaExiste = prev.some((l: any) => l.canal === "martins_pontes" && phoneKey(l.whatsapp_numero) === phoneKey(numReal));
@@ -880,8 +891,15 @@ export default function Atendimento() {
       setCanal("martins_pontes");
       setSelectedChat(null);
       setTimeout(() => setSelectedChat(numReal), 120);
-      toast({ title: "Lead transferido para o canal Martins Pontes! ✅" });
-    } catch {
+
+      // ④ Toast diferenciado conforme estado do n8n
+      if (webhookOk) {
+        toast({ title: "Lead transferido para o canal Martins Pontes! ✅" });
+      } else {
+        toast({ title: "Lead transferido ✅ — mensagens WhatsApp pendentes (servidor n8n indisponível)" });
+      }
+    } catch (err) {
+      console.error("[transferToMP] Erro Supabase:", err);
       toast({ title: "Erro ao transferir lead", variant: "destructive" });
     } finally {
       setTransferring(false);
