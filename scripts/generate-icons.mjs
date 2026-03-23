@@ -10,29 +10,33 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "public");
 
-// Monograma AW LEGALTECH — fundo preto, roxo sólido
-// Estrutura: A (dois diagonais espessos em /\) + W (três barras verticais conectadas)
-// As formas são polígonos preenchidos (não traços) — estilo do logo original
+// Monograma AW LEGALTECH — reconstrução fiel ao logo original
+//
+// Estrutura:
+//   A: polyline 71,388 → 156,128 → 241,388 (dois diagonais em /\)
+//   W: três barras PARALELAS ao diagonal direito do A, conectadas por barra horizontal no topo
+//      - A barra esquerda do W coincide com a barra direita do A
+//      - Conector horizontal em y=244 (45% do A, nível onde o W começa)
+//      - Barra central: (294,244) → (341,388) [mesmo ângulo do A]
+//      - Barra direita: (394,244) → (441,388) [mesmo ângulo do A]
+//   Espaçamento: 100px entre centros de barra (uniforme)
+
 const SVG = `<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <rect width="512" height="512" fill="#0a0a0f"/>
-  <g fill="#7c3aed">
+  <g fill="none" stroke="#7c3aed" stroke-width="48"
+     stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="20">
 
-    <!-- LETRA A — perna esquerda (diagonal /) -->
-    <!-- base: x 60→108, topo: x 165→208, apex em y=128 -->
-    <polygon points="60,390 108,390 208,128 165,128"/>
+    <!-- LETRA A: dois diagonais formando /\  -->
+    <polyline points="71,388 156,128 241,388"/>
 
-    <!-- LETRA A — perna direita (diagonal \) = também a barra esquerda do W -->
-    <polygon points="165,128 208,128 305,390 258,390"/>
+    <!-- LETRA W: conector horizontal no topo (y=244), ligando A ao W -->
+    <line x1="194" y1="244" x2="394" y2="244"/>
 
-    <!-- LETRA W — conector horizontal no topo das três barras (y=242 a y=284) -->
-    <!-- começa onde a perna direita do A chega em y=242 (~x=262) até o fim do W -->
-    <polygon points="262,242 463,242 463,284 262,284"/>
+    <!-- LETRA W: barra central — paralela à perna direita do A -->
+    <line x1="294" y1="244" x2="341" y2="388"/>
 
-    <!-- LETRA W — barra central -->
-    <polygon points="338,242 383,242 383,390 338,390"/>
-
-    <!-- LETRA W — barra direita -->
-    <polygon points="418,242 463,242 463,390 418,390"/>
+    <!-- LETRA W: barra direita — paralela à perna direita do A -->
+    <line x1="394" y1="244" x2="441" y2="388"/>
 
   </g>
 </svg>`;
@@ -41,10 +45,7 @@ const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <style>
-    * { margin: 0; padding: 0; }
-    html, body { width: 512px; height: 512px; overflow: hidden; background: #0a0a0f; }
-  </style>
+  <style>* { margin:0; padding:0; } html,body { width:512px; height:512px; overflow:hidden; background:#0a0a0f; }</style>
 </head>
 <body>${SVG}</body>
 </html>`;
@@ -62,17 +63,10 @@ async function generate() {
   for (const { size, name } of SIZES) {
     await page.setViewportSize({ width: size, height: size });
     await page.setContent(
-      html.replace(
-        'viewBox="0 0 512 512"',
-        `viewBox="0 0 512 512" width="${size}" height="${size}"`
-      ),
+      html.replace('viewBox="0 0 512 512"', `viewBox="0 0 512 512" width="${size}" height="${size}"`),
       { waitUntil: "networkidle" }
     );
-
-    const buffer = await page.screenshot({
-      type: "png",
-      clip: { x: 0, y: 0, width: size, height: size },
-    });
+    const buffer = await page.screenshot({ type: "png", clip: { x: 0, y: 0, width: size, height: size } });
     writeFileSync(path.join(publicDir, name), buffer);
     console.log(`✅ ${name} (${size}×${size})`);
   }
