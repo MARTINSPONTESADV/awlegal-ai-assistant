@@ -10,35 +10,28 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "public");
 
-// Monograma AW LEGALTECH — reconstrução fiel ao logo original
+// Monograma AW LEGALTECH — polyline único /\/\/
 //
-// Estrutura:
-//   A: polyline 71,388 → 156,128 → 241,388 (dois diagonais em /\)
-//   W: três barras PARALELAS ao diagonal direito do A, conectadas por barra horizontal no topo
-//      - A barra esquerda do W coincide com a barra direita do A
-//      - Conector horizontal em y=244 (45% do A, nível onde o W começa)
-//      - Barra central: (294,244) → (341,388) [mesmo ângulo do A]
-//      - Barra direita: (394,244) → (441,388) [mesmo ângulo do A]
-//   Espaçamento: 100px entre centros de barra (uniforme)
+// Um único traço contínuo com 6 pontos, todos os segmentos com ângulo idêntico.
+// A perna direita do A é compartilhada com a perna esquerda do W.
+//
+// Passo horizontal: 85px | Altura total: 128→388 (260px)
+// Ângulo de cada segmento: atan(260/85) ≈ 72° — igual em todos
+//
+//   44,388 → 129,128   = perna esquerda do A  (↗)
+//  129,128 → 214,388   = perna direita do A   (↘)  ← também perna esquerda do W
+//  214,388 → 299,128   = 1ª interna do W      (↗)
+//  299,128 → 384,388   = 2ª interna do W      (↘)
+//  384,388 → 469,128   = perna direita do W   (↗)
+//
+// W lido sozinho (da perna esquerda compartilhada): ↘↗↘↗ = W correto ✓
+// Margens visuais: ~22px esquerda, ~21px direita (stroke-width 44 ÷ 2)
 
 const SVG = `<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <rect width="512" height="512" fill="#0a0a0f"/>
-  <g fill="none" stroke="#7c3aed" stroke-width="48"
-     stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="20">
-
-    <!-- LETRA A: dois diagonais formando /\  -->
-    <polyline points="71,388 156,128 241,388"/>
-
-    <!-- LETRA W: conector horizontal no topo (y=244), ligando A ao W -->
-    <line x1="194" y1="244" x2="394" y2="244"/>
-
-    <!-- LETRA W: barra central — paralela à perna direita do A -->
-    <line x1="294" y1="244" x2="341" y2="388"/>
-
-    <!-- LETRA W: barra direita — paralela à perna direita do A -->
-    <line x1="394" y1="244" x2="441" y2="388"/>
-
-  </g>
+  <polyline fill="none" stroke="#7c3aed" stroke-width="44"
+            stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="20"
+            points="44,388 129,128 214,388 299,128 384,388 469,128"/>
 </svg>`;
 
 const html = `<!DOCTYPE html>
