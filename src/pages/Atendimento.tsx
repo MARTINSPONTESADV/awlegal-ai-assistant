@@ -546,17 +546,15 @@ export default function Atendimento() {
     try {
       console.log("[toggleBot] Atualizando bot_ativo:", { selectedChat, previousVal, newVal });
 
-      const { data: restData, error: updateError } = await (supabase as any)
-        .from("controle_bot")
-        .update({ bot_ativo: newVal })
-        .eq("whatsapp_numero", selectedChat)
-        .select();
+      const { data: rpcData, error: updateError } = await supabase
+        .rpc('set_bot_status', { p_numero: selectedChat, p_ativo: newVal });
 
-      console.log("[toggleBot] Supabase response:", { rows: restData?.length, data: restData, error: updateError });
+      console.log("[toggleBot] RPC response:", { rows: rpcData?.length, data: rpcData, error: updateError });
 
       if (updateError) {
         throw new Error(`Supabase error: ${updateError.message}`);
       }
+      const restData = rpcData;
 
       if (!Array.isArray(restData) || restData.length === 0) {
         throw new Error("UPDATE retornou 0 linhas — verifique as RLS policies da tabela controle_bot");
