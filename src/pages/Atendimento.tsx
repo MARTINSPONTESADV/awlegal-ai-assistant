@@ -546,31 +546,16 @@ export default function Atendimento() {
     try {
       console.log("[toggleBot] Atualizando bot_ativo:", { selectedChat, previousVal, newVal });
 
-      // REST direto via PostgREST — evita problemas com types desatualizados do Supabase JS
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      const session = (await supabase.auth.getSession()).data.session;
-      const authToken = session?.access_token || supabaseKey;
+      const { data: restData, error: updateError } = await (supabase as any)
+        .from("controle_bot")
+        .update({ bot_ativo: newVal })
+        .eq("whatsapp_numero", selectedChat)
+        .select();
 
-      const restRes = await fetch(
-        `${supabaseUrl}/rest/v1/controle_bot?whatsapp_numero=eq.${encodeURIComponent(selectedChat)}`,
-        {
-          method: "PATCH",
-          headers: {
-            "apikey": supabaseKey,
-            "Authorization": `Bearer ${authToken}`,
-            "Content-Type": "application/json",
-            "Prefer": "return=representation",
-          },
-          body: JSON.stringify({ bot_ativo: newVal }),
-        }
-      );
+      console.log("[toggleBot] Supabase response:", { rows: restData?.length, data: restData, error: updateError });
 
-      const restData = await restRes.json().catch(() => []);
-      console.log("[toggleBot] REST response:", { status: restRes.status, rows: restData?.length, data: restData });
-
-      if (!restRes.ok) {
-        throw new Error(`HTTP ${restRes.status}: ${JSON.stringify(restData)}`);
+      if (updateError) {
+        throw new Error(`Supabase error: ${updateError.message}`);
       }
 
       if (!Array.isArray(restData) || restData.length === 0) {
