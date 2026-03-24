@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import {
   TrendingUp, TrendingDown, Minus, Clock, DollarSign, Activity,
-  Trophy, Ticket, Handshake, Hammer, Scale, Timer,
+  Trophy, Ticket, Handshake, Hammer, Timer,
 } from "lucide-react";
 
 const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
@@ -27,11 +27,10 @@ const PIE_FALLBACK = ["hsl(210,80%,55%)", "hsl(142,71%,45%)", "hsl(45,80%,50%)",
 const FONTE_CONFIG = {
   Acordo:   { color: "#3b82f6", bg: "bg-blue-500/10",   text: "text-blue-500",   Icon: Handshake },
   Execução: { color: "#a855f7", bg: "bg-purple-500/10", text: "text-purple-500", Icon: Hammer    },
-  Sentença: { color: "#22c55e", bg: "bg-emerald-500/10",text: "text-emerald-500",Icon: Scale     },
 } as const;
 
-type TipoReceita = "Acordo" | "Execução" | "Sentença";
-const TIPOS_RECEITA: TipoReceita[] = ["Acordo", "Execução", "Sentença"];
+type TipoReceita = "Acordo" | "Execução";
+const TIPOS_RECEITA: TipoReceita[] = ["Acordo", "Execução"];
 
 interface Processo {
   id: string;
@@ -60,7 +59,6 @@ function calcReceita(p: Processo): number {
 function getTipoReceita(p: Processo): TipoReceita | null {
   if (Number(p.valor_acordo || 0) > 0) return "Acordo";
   if (Number(p.valor_execucao || 0) > 0) return "Execução";
-  if (Number(p.valor_sentenca || 0) > 0) return "Sentença";
   return null;
 }
 
@@ -197,7 +195,7 @@ export default function MetricasAvancadas() {
 
   // ── Gráfico: Receita mensal por fonte (stacked bar) ───────────────────────
   const receitaMensalPorTipo = useMemo(() => {
-    const data = MONTHS.map(m => ({ name: m, Acordo: 0, Execução: 0, Sentença: 0 }));
+    const data = MONTHS.map(m => ({ name: m, Acordo: 0, Execução: 0 }));
     processosPagos
       .filter(p => getDataRef(p))
       .forEach(p => {
@@ -423,7 +421,7 @@ export default function MetricasAvancadas() {
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-bold">Receita por Fonte de Pagamento</h2>
-          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Acordo · Execução · Sentença</span>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Acordo · Execução</span>
         </div>
 
         {/* KPI cards por fonte */}
@@ -481,7 +479,7 @@ export default function MetricasAvancadas() {
                   />
                   <Legend wrapperStyle={{ fontSize: 12, color: "hsl(var(--muted-foreground))" }} />
                   {TIPOS_RECEITA.map(tipo => (
-                    <Bar key={tipo} dataKey={tipo} stackId="a" fill={FONTE_CONFIG[tipo].color} radius={tipo === "Sentença" ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                    <Bar key={tipo} dataKey={tipo} stackId="a" fill={FONTE_CONFIG[tipo].color} radius={tipo === "Execução" ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
