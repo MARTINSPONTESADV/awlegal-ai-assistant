@@ -4,22 +4,34 @@ import { SpotlightCard } from "@/components/SpotlightCard";
 import { fmtBRL, calcEscritorio } from "@/lib/financeiro";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
-  ResponsiveContainer, Cell, PieChart, Pie,
+  ResponsiveContainer, Cell, PieChart, Pie, Legend,
 } from "recharts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, Clock, DollarSign, Activity, Trophy, Ticket } from "lucide-react";
+import {
+  TrendingUp, TrendingDown, Minus, Clock, DollarSign, Activity,
+  Trophy, Ticket, Handshake, Hammer, Scale, Timer,
+} from "lucide-react";
 
 const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 const COLORS_PROG: Record<string, string> = {
-  "Procedente":    "#22c55e",
-  "Acordo":        "#3b82f6",
-  "Parcial":       "#f59e0b",
-  "Improcedente":  "#ef4444",
-  "Outros":        "#8b5cf6",
+  "Procedente":   "#22c55e",
+  "Acordo":       "#3b82f6",
+  "Parcial":      "#f59e0b",
+  "Improcedente": "#ef4444",
+  "Outros":       "#8b5cf6",
 };
 const PIE_FALLBACK = ["hsl(210,80%,55%)", "hsl(142,71%,45%)", "hsl(45,80%,50%)", "hsl(260,60%,55%)", "hsl(30,80%,50%)"];
+
+const FONTE_CONFIG = {
+  Acordo:   { color: "#3b82f6", bg: "bg-blue-500/10",   text: "text-blue-500",   Icon: Handshake },
+  Execução: { color: "#a855f7", bg: "bg-purple-500/10", text: "text-purple-500", Icon: Hammer    },
+  Sentença: { color: "#22c55e", bg: "bg-emerald-500/10",text: "text-emerald-500",Icon: Scale     },
+} as const;
+
+type TipoReceita = "Acordo" | "Execução" | "Sentença";
+const TIPOS_RECEITA: TipoReceita[] = ["Acordo", "Execução", "Sentença"];
 
 interface Processo {
   id: string;
@@ -42,6 +54,14 @@ function calcReceita(p: Processo): number {
   const base = Number(p.valor_acordo || 0) || Number(p.valor_execucao || 0) || Number(p.valor_sentenca || 0);
   const pct = Number(p.honorarios_percentual || 0);
   return calcEscritorio(base, pct);
+}
+
+/** Fonte de receita determinada pelo campo de valor preenchido */
+function getTipoReceita(p: Processo): TipoReceita | null {
+  if (Number(p.valor_acordo || 0) > 0) return "Acordo";
+  if (Number(p.valor_execucao || 0) > 0) return "Execução";
+  if (Number(p.valor_sentenca || 0) > 0) return "Sentença";
+  return null;
 }
 
 /** Data de referência para cálculo de receita: data_pagamento > data_encerramento */
@@ -71,7 +91,7 @@ export default function MetricasAvancadas() {
     [processos]
   );
 
-  // KPI: Receita deste mês — usa data_pagamento se disponível, senão data_encerramento
+  // ── KPI: Receita deste mês ─────────────────────────────────────────────────
   const receitaMesAtual = useMemo(() => {
     return processosPagos
       .filter(p => {
@@ -100,7 +120,7 @@ export default function MetricasAvancadas() {
     ? ((receitaMesAtual - receitaMesAnterior) / receitaMesAnterior) * 100
     : receitaMesAtual > 0 ? 100 : 0;
 
-  // KPI: Tempo médio de duração (distribuição → encerramento) — lógica correta
+  // ── KPI: Tempo médio de duração ────────────────────────────────────────────
   const tempoMedioDuracao = useMemo(() => {
     const finalizados = processos.filter(p => p.data_distribuicao && p.data_encerramento);
     if (!finalizados.length) return null;
@@ -111,7 +131,7 @@ export default function MetricasAvancadas() {
     return totalDias / finalizados.length;
   }, [processos]);
 
-  // KPI: Tempo médio em execução — inclui processos ativos (usa hoje como fim)
+  // ── KPI: Tempo médio em execução (inclui ativos) ───────────────────────────
   const tempoMedioExecucao = useMemo(() => {
     const emExecucao = processos.filter(p => p.data_execucao);
     if (!emExecucao.length) return null;
@@ -124,7 +144,7 @@ export default function MetricasAvancadas() {
     return totalDias / emExecucao.length;
   }, [processos]);
 
-  // KPI: Taxa de Êxito = (Procedentes + Acordos) / Processos Julgados
+  // ── KPI: Taxa de Êxito = (Procedentes + Acordos) / Julgados ───────────────
   const { taxaExito, totalJulgados, totalExitosos } = useMemo(() => {
     const julgados = processos.filter(p => p.prognostico && p.prognostico !== "");
     const exitosos = julgados.filter(p => p.prognostico === "Procedente" || p.prognostico === "Acordo");
@@ -135,21 +155,63 @@ export default function MetricasAvancadas() {
     };
   }, [processos]);
 
-  // KPI: Ticket Médio = receita total paga / nº processos pagos
+  // ── KPI: Ticket Médio ──────────────────────────────────────────────────────
   const ticketMedio = useMemo(() => {
     if (!processosPagos.length) return null;
     const total = processosPagos.reduce((s, p) => s + calcReceita(p), 0);
     return total / processosPagos.length;
   }, [processosPagos]);
 
-  const formatDias = (dias: number | null) => {
-    if (dias === null) return "—";
-    const meses = Math.floor(dias / 30);
-    const d = Math.round(dias % 30);
-    return meses > 0 ? `${meses} meses / ${d} dias` : `${d} dias`;
-  };
+  // ── KPI: Tempo médio até pagamento (data_encerramento → data_pagamento) ────
+  const tempoMedioAtePagamento = useMemo(() => {
+    const comAmbas = processosPagos.filter(p => p.data_encerramento && p.data_pagamento);
+    if (!comAmbas.length) return null;
+    const total = comAmbas.reduce((s, p) => {
+      const enc = new Date(p.data_encerramento! + "T00:00:00");
+      const pag = new Date(p.data_pagamento! + "T00:00:00");
+      return s + Math.max(0, (pag.getTime() - enc.getTime()) / 86400000);
+    }, 0);
+    return total / comAmbas.length;
+  }, [processosPagos]);
 
-  // Gráfico: Receita mensal — usa data_pagamento quando disponível
+  // ── Análise por fonte de receita ───────────────────────────────────────────
+  const receitaPorFonte = useMemo(() => {
+    return TIPOS_RECEITA.map(tipo => {
+      const todos = processos.filter(p => getTipoReceita(p) === tipo);
+      const pagos = todos.filter(p => p.status_pagamento_honorarios === "Pago");
+      const pendentes = todos.filter(p => p.status_pagamento_honorarios !== "Pago");
+      const totalRecebido = pagos.reduce((s, p) => s + calcReceita(p), 0);
+      const totalPendente = pendentes.reduce((s, p) => s + calcReceita(p), 0);
+      return {
+        tipo,
+        total: todos.length,
+        qtdPagos: pagos.length,
+        qtdPendentes: pendentes.length,
+        totalRecebido,
+        totalPendente,
+        taxaRecebimento: todos.length > 0 ? (pagos.length / todos.length) * 100 : 0,
+        ticketMedio: pagos.length > 0 ? totalRecebido / pagos.length : null,
+      };
+    });
+  }, [processos]);
+
+  // ── Gráfico: Receita mensal por fonte (stacked bar) ───────────────────────
+  const receitaMensalPorTipo = useMemo(() => {
+    const data = MONTHS.map(m => ({ name: m, Acordo: 0, Execução: 0, Sentença: 0 }));
+    processosPagos
+      .filter(p => getDataRef(p))
+      .forEach(p => {
+        const ref = getDataRef(p)!;
+        const d = new Date(ref + "T00:00:00");
+        if (d.getFullYear() === currentYear) {
+          const tipo = getTipoReceita(p);
+          if (tipo) (data[d.getMonth()] as any)[tipo] += calcReceita(p);
+        }
+      });
+    return data;
+  }, [processosPagos, currentYear]);
+
+  // ── Gráfico: Receita mensal total (bar simples) ────────────────────────────
   const receitaMensal = useMemo(() => {
     const data = MONTHS.map((m) => ({ name: m, valor: 0 }));
     processosPagos
@@ -157,14 +219,12 @@ export default function MetricasAvancadas() {
       .forEach(p => {
         const ref = getDataRef(p)!;
         const d = new Date(ref + "T00:00:00");
-        if (d.getFullYear() === currentYear) {
-          data[d.getMonth()].valor += calcReceita(p);
-        }
+        if (d.getFullYear() === currentYear) data[d.getMonth()].valor += calcReceita(p);
       });
     return data;
   }, [processosPagos, currentYear]);
 
-  // Donut: Composição da receita por prognóstico — usa data_pagamento quando disponível
+  // ── Gráfico: Composição receita mês atual por prognóstico ─────────────────
   const composicaoReceita = useMemo(() => {
     const map: Record<string, number> = {};
     processosPagos
@@ -181,14 +241,11 @@ export default function MetricasAvancadas() {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [processosPagos, currentMonth, currentYear]);
 
-  // Matriz de desempenho
+  // ── Matriz de desempenho ───────────────────────────────────────────────────
   const matrizData = useMemo(() => {
     const map: Record<string, {
-      volume: number;
-      tempoTotal: number;
-      tempoCount: number;
-      receitaRealizada: number;
-      receitaPotencial: number;
+      volume: number; tempoTotal: number; tempoCount: number;
+      receitaRealizada: number; receitaPotencial: number;
     }> = {};
     const today = new Date();
     processos.forEach(p => {
@@ -198,26 +255,29 @@ export default function MetricasAvancadas() {
       if (p.data_execucao) {
         const start = new Date(p.data_execucao + "T00:00:00");
         const end = p.data_encerramento ? new Date(p.data_encerramento + "T00:00:00") : today;
-        const diff = Math.max(0, (end.getTime() - start.getTime()) / 86400000);
-        map[key].tempoTotal += diff;
+        map[key].tempoTotal += Math.max(0, (end.getTime() - start.getTime()) / 86400000);
         map[key].tempoCount++;
       }
-      if (p.status_pagamento_honorarios === "Pago") {
-        map[key].receitaRealizada += calcReceita(p);
-      } else {
-        map[key].receitaPotencial += calcReceita(p);
-      }
+      if (p.status_pagamento_honorarios === "Pago") map[key].receitaRealizada += calcReceita(p);
+      else map[key].receitaPotencial += calcReceita(p);
     });
     return Object.entries(map)
       .map(([tipo, d]) => ({
-        tipo,
-        volume: d.volume,
+        tipo, volume: d.volume,
         tempoMedio: d.tempoCount > 0 ? d.tempoTotal / d.tempoCount : null,
         receitaRealizada: d.receitaRealizada,
         receitaPotencial: d.receitaPotencial,
       }))
       .sort((a, b) => b.volume - a.volume);
   }, [processos]);
+
+  // ── Helpers de formatação ──────────────────────────────────────────────────
+  const formatDias = (dias: number | null) => {
+    if (dias === null) return "—";
+    const meses = Math.floor(dias / 30);
+    const d = Math.round(dias % 30);
+    return meses > 0 ? `${meses} meses / ${d} dias` : `${d} dias`;
+  };
 
   const getSlaColor = (dias: number | null) => {
     if (dias === null) return "muted";
@@ -230,8 +290,7 @@ export default function MetricasAvancadas() {
     const colorMap: Record<string, string> = {
       green: "text-emerald-500", yellow: "text-yellow-500", red: "text-red-500", muted: "text-muted-foreground",
     };
-    const color = getSlaColor(dias);
-    return <span className={`inline-block h-3 w-3 rounded-full ${colorMap[color]}`} style={{ backgroundColor: "currentColor" }} />;
+    return <span className={`inline-block h-3 w-3 rounded-full ${colorMap[getSlaColor(dias)]}`} style={{ backgroundColor: "currentColor" }} />;
   };
 
   const yAxisFormatter = (v: number) => {
@@ -241,9 +300,14 @@ export default function MetricasAvancadas() {
     return `R$${v.toFixed(0)}`;
   };
 
+  const taxaBadgeVariant = (pct: number) =>
+    pct >= 70 ? "default" : pct >= 30 ? "secondary" : "destructive";
+
+  // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
-      {/* KPIs row 1 */}
+    <div className="space-y-8">
+
+      {/* ── KPIs principais ── */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         <SpotlightCard>
           <div className="flex items-center gap-4">
@@ -312,8 +376,8 @@ export default function MetricasAvancadas() {
         </SpotlightCard>
       </div>
 
-      {/* KPI row 2 */}
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+      {/* ── KPIs secundários ── */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
         <SpotlightCard>
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-purple-500/10 shrink-0">
@@ -323,6 +387,19 @@ export default function MetricasAvancadas() {
               <p className="kpi-value text-2xl font-bold text-foreground">{formatDias(tempoMedioExecucao)}</p>
               <p className="text-sm text-muted-foreground">Tempo Médio em Execução</p>
               <p className="text-xs text-muted-foreground/70 mt-0.5">Data Execução → Encerramento (ou hoje)</p>
+            </div>
+          </div>
+        </SpotlightCard>
+
+        <SpotlightCard>
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-orange-500/10 shrink-0">
+              <Timer className="h-7 w-7 text-orange-500" />
+            </div>
+            <div>
+              <p className="kpi-value text-2xl font-bold text-foreground">{formatDias(tempoMedioAtePagamento)}</p>
+              <p className="text-sm text-muted-foreground">Tempo Médio até Pagamento</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Do encerramento ao recebimento</p>
             </div>
           </div>
         </SpotlightCard>
@@ -340,69 +417,210 @@ export default function MetricasAvancadas() {
         </SpotlightCard>
       </div>
 
-      {/* Charts */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        <SpotlightCard>
-          <h3 className="text-lg font-semibold mb-4">Receita Mensal — {currentYear}</h3>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={receitaMensal} margin={{ top: 4, right: 8, left: 8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border/30" />
-                <XAxis dataKey="name" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
-                <YAxis
-                  tickFormatter={yAxisFormatter}
-                  className="text-xs"
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                  width={60}
-                />
-                <ReTooltip
-                  formatter={(value: number) => [fmtBRL(value), "Receita"]}
-                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
-                  labelStyle={{ color: "hsl(var(--foreground))" }}
-                />
-                <Bar dataKey="valor" radius={[4, 4, 0, 0]}>
-                  {receitaMensal.map((_, i) => (
-                    <Cell key={i} fill={i === currentMonth ? "hsl(210, 80%, 55%)" : "hsl(210, 40%, 70%)"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </SpotlightCard>
+      {/* ═══════════════════════════════════════════════════════════════════════
+          SEÇÃO: Receita por Fonte de Pagamento
+      ════════════════════════════════════════════════════════════════════════ */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-bold">Receita por Fonte de Pagamento</h2>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Acordo · Execução · Sentença</span>
+        </div>
 
-        <SpotlightCard>
-          <h3 className="text-lg font-semibold mb-4">Composição da Receita — {MONTHS[currentMonth]}</h3>
-          {composicaoReceita.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-12">Sem dados de receita neste mês</p>
-          ) : (
+        {/* KPI cards por fonte */}
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+          {receitaPorFonte.map(({ tipo, total, qtdPagos, totalRecebido, totalPendente, taxaRecebimento }) => {
+            const cfg = FONTE_CONFIG[tipo];
+            const { Icon } = cfg;
+            return (
+              <SpotlightCard key={tipo}>
+                <div className="flex items-start gap-4">
+                  <div className={`flex h-14 w-14 items-center justify-center rounded-xl ${cfg.bg} shrink-0`}>
+                    <Icon className={`h-7 w-7 ${cfg.text}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-sm font-semibold text-muted-foreground">{tipo}</p>
+                      <Badge
+                        variant={taxaBadgeVariant(taxaRecebimento)}
+                        className="text-[10px] px-1.5 py-0"
+                      >
+                        {taxaRecebimento.toFixed(0)}% recebido
+                      </Badge>
+                    </div>
+                    <p className="kpi-value text-2xl font-bold text-foreground truncate">{fmtBRL(totalRecebido)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {qtdPagos} de {total} processos pagos
+                    </p>
+                    {totalPendente > 0 && (
+                      <p className="text-xs text-amber-500 mt-0.5">
+                        + {fmtBRL(totalPendente)} pendente
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </SpotlightCard>
+            );
+          })}
+        </div>
+
+        {/* Stacked bar + tabela de análise */}
+        <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+          {/* Stacked bar: evolução mensal por fonte */}
+          <SpotlightCard>
+            <h3 className="text-lg font-semibold mb-4">Evolução Mensal por Fonte — {currentYear}</h3>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={composicaoReceita} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3}>
-                    {composicaoReceita.map((entry, i) => (
-                      <Cell key={i} fill={COLORS_PROG[entry.name] ?? PIE_FALLBACK[i % PIE_FALLBACK.length]} />
-                    ))}
-                  </Pie>
+                <BarChart data={receitaMensalPorTipo} margin={{ top: 4, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/30" />
+                  <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                  <YAxis tickFormatter={yAxisFormatter} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} width={60} />
                   <ReTooltip
                     formatter={(value: number, name: string) => [fmtBRL(value), name]}
                     contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
+                    labelStyle={{ color: "hsl(var(--foreground))" }}
                   />
-                </PieChart>
+                  <Legend wrapperStyle={{ fontSize: 12, color: "hsl(var(--muted-foreground))" }} />
+                  {TIPOS_RECEITA.map(tipo => (
+                    <Bar key={tipo} dataKey={tipo} stackId="a" fill={FONTE_CONFIG[tipo].color} radius={tipo === "Sentença" ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                  ))}
+                </BarChart>
               </ResponsiveContainer>
-              <div className="flex flex-wrap gap-3 justify-center mt-2">
-                {composicaoReceita.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-1.5 text-xs">
-                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS_PROG[d.name] ?? PIE_FALLBACK[i % PIE_FALLBACK.length] }} />
-                    <span className="text-muted-foreground">{d.name} — {fmtBRL(d.value)}</span>
-                  </div>
-                ))}
-              </div>
             </div>
-          )}
-        </SpotlightCard>
+          </SpotlightCard>
+
+          {/* Tabela de análise por fonte */}
+          <SpotlightCard>
+            <h3 className="text-lg font-semibold mb-4">Análise por Fonte de Receita</h3>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fonte</TableHead>
+                    <TableHead className="text-center">Processos</TableHead>
+                    <TableHead className="text-right">Recebido</TableHead>
+                    <TableHead className="text-right">Pendente</TableHead>
+                    <TableHead className="text-right">Ticket Médio</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {receitaPorFonte.map(({ tipo, total, qtdPagos, qtdPendentes, totalRecebido, totalPendente, taxaRecebimento, ticketMedio: tm }) => {
+                    const cfg = FONTE_CONFIG[tipo];
+                    const { Icon } = cfg;
+                    return (
+                      <TableRow key={tipo}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Icon className={`h-4 w-4 ${cfg.text}`} />
+                            <span className="font-medium">{tipo}</span>
+                          </div>
+                          <div className="mt-1">
+                            <Badge variant={taxaBadgeVariant(taxaRecebimento)} className="text-[10px] px-1.5 py-0">
+                              {taxaRecebimento.toFixed(0)}%
+                            </Badge>
+                            <span className="text-xs text-muted-foreground ml-1">{qtdPagos}/{total} pagos</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="secondary">{total}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-emerald-500">
+                          {totalRecebido > 0 ? fmtBRL(totalRecebido) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-amber-500">
+                          {totalPendente > 0 ? fmtBRL(totalPendente) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {tm !== null ? fmtBRL(tm) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {/* Linha de totais */}
+                  <TableRow className="border-t-2 font-bold">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-center">
+                      <Badge>{processos.filter(p => getTipoReceita(p) !== null).length}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-emerald-500">
+                      {fmtBRL(receitaPorFonte.reduce((s, f) => s + f.totalRecebido, 0))}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-amber-500">
+                      {fmtBRL(receitaPorFonte.reduce((s, f) => s + f.totalPendente, 0))}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </SpotlightCard>
+        </div>
       </div>
 
-      {/* Matriz de Desempenho */}
+      {/* ═══════════════════════════════════════════════════════════════════════
+          SEÇÃO: Gráficos — Receita Total e Composição
+      ════════════════════════════════════════════════════════════════════════ */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold">Receita Mensal e Composição</h2>
+        <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+          <SpotlightCard>
+            <h3 className="text-lg font-semibold mb-4">Receita Total Mensal — {currentYear}</h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={receitaMensal} margin={{ top: 4, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/30" />
+                  <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                  <YAxis tickFormatter={yAxisFormatter} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} width={60} />
+                  <ReTooltip
+                    formatter={(value: number) => [fmtBRL(value), "Receita"]}
+                    contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
+                    labelStyle={{ color: "hsl(var(--foreground))" }}
+                  />
+                  <Bar dataKey="valor" radius={[4, 4, 0, 0]}>
+                    {receitaMensal.map((_, i) => (
+                      <Cell key={i} fill={i === currentMonth ? "hsl(210, 80%, 55%)" : "hsl(210, 40%, 70%)"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </SpotlightCard>
+
+          <SpotlightCard>
+            <h3 className="text-lg font-semibold mb-4">Composição da Receita — {MONTHS[currentMonth]}</h3>
+            {composicaoReceita.length === 0 ? (
+              <p className="text-muted-foreground text-sm text-center py-12">Sem dados de receita neste mês</p>
+            ) : (
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={composicaoReceita} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3}>
+                      {composicaoReceita.map((entry, i) => (
+                        <Cell key={i} fill={COLORS_PROG[entry.name] ?? PIE_FALLBACK[i % PIE_FALLBACK.length]} />
+                      ))}
+                    </Pie>
+                    <ReTooltip
+                      formatter={(value: number, name: string) => [fmtBRL(value), name]}
+                      contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex flex-wrap gap-3 justify-center mt-2">
+                  {composicaoReceita.map((d, i) => (
+                    <div key={d.name} className="flex items-center gap-1.5 text-xs">
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS_PROG[d.name] ?? PIE_FALLBACK[i % PIE_FALLBACK.length] }} />
+                      <span className="text-muted-foreground">{d.name} — {fmtBRL(d.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </SpotlightCard>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          SEÇÃO: Matriz de Desempenho
+      ════════════════════════════════════════════════════════════════════════ */}
       <SpotlightCard>
         <h3 className="text-lg font-semibold mb-4">Matriz de Desempenho por Tipo de Processo</h3>
         <div className="overflow-x-auto">
@@ -423,17 +641,15 @@ export default function MetricasAvancadas() {
               {matrizData.map(row => (
                 <TableRow key={row.tipo}>
                   <TableCell className="font-medium">{row.tipo}</TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="secondary">{row.volume}</Badge>
-                  </TableCell>
+                  <TableCell className="text-center"><Badge variant="secondary">{row.volume}</Badge></TableCell>
                   <TableCell className="text-center">
                     <div className="flex items-center justify-center gap-2">
                       <SlaIcon dias={row.tempoMedio} />
                       <span className="text-sm">{formatDias(row.tempoMedio)}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-mono text-sm">{fmtBRL(row.receitaRealizada)}</TableCell>
-                  <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmtBRL(row.receitaPotencial)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm text-emerald-500">{fmtBRL(row.receitaRealizada)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm text-amber-500">{fmtBRL(row.receitaPotencial)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
