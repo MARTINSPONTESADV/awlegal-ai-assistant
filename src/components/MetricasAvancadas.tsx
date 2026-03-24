@@ -11,10 +11,15 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Minus, Clock, DollarSign, Activity, Trophy, Ticket } from "lucide-react";
 
 const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-const PIE_COLORS = [
-  "hsl(210, 80%, 55%)", "hsl(142, 71%, 45%)", "hsl(45, 80%, 50%)",
-  "hsl(260, 60%, 55%)", "hsl(30, 80%, 50%)", "hsl(0, 60%, 50%)",
-];
+
+const COLORS_PROG: Record<string, string> = {
+  "Procedente":    "#22c55e",
+  "Acordo":        "#3b82f6",
+  "Parcial":       "#f59e0b",
+  "Improcedente":  "#ef4444",
+  "Outros":        "#8b5cf6",
+};
+const PIE_FALLBACK = ["hsl(210,80%,55%)", "hsl(142,71%,45%)", "hsl(45,80%,50%)", "hsl(260,60%,55%)", "hsl(30,80%,50%)"];
 
 interface Processo {
   id: string;
@@ -23,6 +28,7 @@ interface Processo {
   data_distribuicao: string | null;
   data_encerramento: string | null;
   data_execucao: string | null;
+  data_pagamento: string | null;
   situacao: string | null;
   prognostico: string | null;
   valor_execucao: number | null;
@@ -38,6 +44,11 @@ function calcReceita(p: Processo): number {
   return calcEscritorio(base, pct);
 }
 
+/** Data de referência para cálculo de receita: data_pagamento > data_encerramento */
+function getDataRef(p: Processo): string | null {
+  return p.data_pagamento || p.data_encerramento;
+}
+
 export default function MetricasAvancadas() {
   const [processos, setProcessos] = useState<Processo[]>([]);
 
@@ -45,7 +56,7 @@ export default function MetricasAvancadas() {
     const load = async () => {
       const { data: p } = await supabase
         .from("processos")
-        .select("id, tipo_processo, area_atuacao, data_distribuicao, data_encerramento, data_execucao, situacao, prognostico, valor_execucao, valor_acordo, valor_sentenca, honorarios_percentual, status_pagamento_honorarios");
+        .select("id, tipo_processo, area_atuacao, data_distribuicao, data_encerramento, data_execucao, data_pagamento, situacao, prognostico, valor_execucao, valor_acordo, valor_sentenca, honorarios_percentual, status_pagamento_honorarios");
       if (p) setProcessos(p as Processo[]);
     };
     load();
@@ -60,12 +71,13 @@ export default function MetricasAvancadas() {
     [processos]
   );
 
-  // KPI: Receita deste mês (processos pagos com data_encerramento neste mês)
+  // KPI: Receita deste mês — usa data_pagamento se disponível, senão data_encerramento
   const receitaMesAtual = useMemo(() => {
     return processosPagos
       .filter(p => {
-        if (!p.data_encerramento) return false;
-        const d = new Date(p.data_encerramento);
+        const ref = getDataRef(p);
+        if (!ref) return false;
+        const d = new Date(ref + "T00:00:00");
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
       })
       .reduce((s, p) => s + calcReceita(p), 0);
@@ -76,8 +88,9 @@ export default function MetricasAvancadas() {
     const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
     return processosPagos
       .filter(p => {
-        if (!p.data_encerramento) return false;
-        const d = new Date(p.data_encerramento);
+        const ref = getDataRef(p);
+        if (!ref) return false;
+        const d = new Date(ref + "T00:00:00");
         return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
       })
       .reduce((s, p) => s + calcReceita(p), 0);
@@ -87,7 +100,7 @@ export default function MetricasAvancadas() {
     ? ((receitaMesAtual - receitaMesAnterior) / receitaMesAnterior) * 100
     : receitaMesAtual > 0 ? 100 : 0;
 
-  // KPI: Tempo médio de duração (somente processos com data_encerramento)
+  // KPI: Tempo médio de duração (distribuição → encerramento) — lógica correta
   const tempoMedioDuracao = useMemo(() => {
     const finalizados = processos.filter(p => p.data_distribuicao && p.data_encerramento);
     if (!finalizados.length) return null;
@@ -98,26 +111,31 @@ export default function MetricasAvancadas() {
     return totalDias / finalizados.length;
   }, [processos]);
 
-  // KPI: Tempo médio em execução — apenas encerrados (exclui ativos para não inflar)
+  // KPI: Tempo médio em execução — inclui processos ativos (usa hoje como fim)
   const tempoMedioExecucao = useMemo(() => {
-    const encerrados = processos.filter(p => p.data_execucao && p.data_encerramento);
-    if (!encerrados.length) return null;
-    const totalDias = encerrados.reduce((s, p) => {
-      const diff = new Date(p.data_encerramento!).getTime() - new Date(p.data_execucao!).getTime();
-      return s + Math.max(0, diff / 86400000);
+    const emExecucao = processos.filter(p => p.data_execucao);
+    if (!emExecucao.length) return null;
+    const today = new Date();
+    const totalDias = emExecucao.reduce((s, p) => {
+      const start = new Date(p.data_execucao! + "T00:00:00");
+      const end = p.data_encerramento ? new Date(p.data_encerramento + "T00:00:00") : today;
+      return s + Math.max(0, (end.getTime() - start.getTime()) / 86400000);
     }, 0);
-    return totalDias / encerrados.length;
+    return totalDias / emExecucao.length;
   }, [processos]);
 
-  // KPI: Taxa de Êxito
-  const taxaExito = useMemo(() => {
-    const fechados = processos.filter(p => p.data_encerramento);
-    if (!fechados.length) return null;
-    const procedentes = fechados.filter(p => p.prognostico === "Procedente").length;
-    return (procedentes / fechados.length) * 100;
+  // KPI: Taxa de Êxito = (Procedentes + Acordos) / Processos Julgados
+  const { taxaExito, totalJulgados, totalExitosos } = useMemo(() => {
+    const julgados = processos.filter(p => p.prognostico && p.prognostico !== "");
+    const exitosos = julgados.filter(p => p.prognostico === "Procedente" || p.prognostico === "Acordo");
+    return {
+      taxaExito: julgados.length > 0 ? (exitosos.length / julgados.length) * 100 : null,
+      totalJulgados: julgados.length,
+      totalExitosos: exitosos.length,
+    };
   }, [processos]);
 
-  // KPI: Ticket Médio
+  // KPI: Ticket Médio = receita total paga / nº processos pagos
   const ticketMedio = useMemo(() => {
     if (!processosPagos.length) return null;
     const total = processosPagos.reduce((s, p) => s + calcReceita(p), 0);
@@ -131,13 +149,14 @@ export default function MetricasAvancadas() {
     return meses > 0 ? `${meses} meses / ${d} dias` : `${d} dias`;
   };
 
-  // Gráfico: Receita mensal (processos pagos agrupados por data_encerramento)
+  // Gráfico: Receita mensal — usa data_pagamento quando disponível
   const receitaMensal = useMemo(() => {
     const data = MONTHS.map((m) => ({ name: m, valor: 0 }));
     processosPagos
-      .filter(p => p.data_encerramento)
+      .filter(p => getDataRef(p))
       .forEach(p => {
-        const d = new Date(p.data_encerramento!);
+        const ref = getDataRef(p)!;
+        const d = new Date(ref + "T00:00:00");
         if (d.getFullYear() === currentYear) {
           data[d.getMonth()].valor += calcReceita(p);
         }
@@ -145,13 +164,14 @@ export default function MetricasAvancadas() {
     return data;
   }, [processosPagos, currentYear]);
 
-  // Donut: Composição da receita por prognóstico
+  // Donut: Composição da receita por prognóstico — usa data_pagamento quando disponível
   const composicaoReceita = useMemo(() => {
     const map: Record<string, number> = {};
     processosPagos
-      .filter(p => p.data_encerramento)
       .filter(p => {
-        const d = new Date(p.data_encerramento!);
+        const ref = getDataRef(p);
+        if (!ref) return false;
+        const d = new Date(ref + "T00:00:00");
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
       })
       .forEach(p => {
@@ -161,7 +181,7 @@ export default function MetricasAvancadas() {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [processosPagos, currentMonth, currentYear]);
 
-  // Matriz de desempenho — tempo médio somente encerrados; receita potencial = pendentes
+  // Matriz de desempenho
   const matrizData = useMemo(() => {
     const map: Record<string, {
       volume: number;
@@ -170,20 +190,21 @@ export default function MetricasAvancadas() {
       receitaRealizada: number;
       receitaPotencial: number;
     }> = {};
+    const today = new Date();
     processos.forEach(p => {
       const key = p.tipo_processo || p.area_atuacao || "Não informado";
       if (!map[key]) map[key] = { volume: 0, tempoTotal: 0, tempoCount: 0, receitaRealizada: 0, receitaPotencial: 0 };
       map[key].volume++;
-      // Tempo médio: apenas processos encerrados (data_execucao + data_encerramento)
-      if (p.data_execucao && p.data_encerramento) {
-        const diff = Math.max(0, (new Date(p.data_encerramento).getTime() - new Date(p.data_execucao).getTime()) / 86400000);
+      if (p.data_execucao) {
+        const start = new Date(p.data_execucao + "T00:00:00");
+        const end = p.data_encerramento ? new Date(p.data_encerramento + "T00:00:00") : today;
+        const diff = Math.max(0, (end.getTime() - start.getTime()) / 86400000);
         map[key].tempoTotal += diff;
         map[key].tempoCount++;
       }
       if (p.status_pagamento_honorarios === "Pago") {
         map[key].receitaRealizada += calcReceita(p);
       } else {
-        // Potencial: processos não pagos
         map[key].receitaPotencial += calcReceita(p);
       }
     });
@@ -211,6 +232,13 @@ export default function MetricasAvancadas() {
     };
     const color = getSlaColor(dias);
     return <span className={`inline-block h-3 w-3 rounded-full ${colorMap[color]}`} style={{ backgroundColor: "currentColor" }} />;
+  };
+
+  const yAxisFormatter = (v: number) => {
+    if (v === 0) return "R$0";
+    if (v >= 1000000) return `R$${(v / 1000000).toFixed(1)}M`;
+    if (v >= 1000) return `R$${(v / 1000).toFixed(0)}k`;
+    return `R$${v.toFixed(0)}`;
   };
 
   return (
@@ -261,7 +289,9 @@ export default function MetricasAvancadas() {
                 {taxaExito !== null ? `${taxaExito.toFixed(1)}%` : "—"}
               </p>
               <p className="text-sm text-muted-foreground">Taxa de Êxito</p>
-              <p className="text-xs text-muted-foreground/70 mt-0.5">Procedentes / encerrados</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">
+                {totalJulgados > 0 ? `${totalExitosos} êxito / ${totalJulgados} julgados` : "Procedentes + Acordos / julgados"}
+              </p>
             </div>
           </div>
         </SpotlightCard>
@@ -282,7 +312,7 @@ export default function MetricasAvancadas() {
         </SpotlightCard>
       </div>
 
-      {/* KPI: Tempo médio execução (encerrados apenas) */}
+      {/* KPI row 2 */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
         <SpotlightCard>
           <div className="flex items-center gap-4">
@@ -292,7 +322,7 @@ export default function MetricasAvancadas() {
             <div>
               <p className="kpi-value text-2xl font-bold text-foreground">{formatDias(tempoMedioExecucao)}</p>
               <p className="text-sm text-muted-foreground">Tempo Médio em Execução</p>
-              <p className="text-xs text-muted-foreground/70 mt-0.5">Data Execução → Encerramento (somente encerrados)</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Data Execução → Encerramento (ou hoje)</p>
             </div>
           </div>
         </SpotlightCard>
@@ -316,10 +346,15 @@ export default function MetricasAvancadas() {
           <h3 className="text-lg font-semibold mb-4">Receita Mensal — {currentYear}</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={receitaMensal}>
+              <BarChart data={receitaMensal} margin={{ top: 4, right: 8, left: 8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border/30" />
-                <XAxis dataKey="name" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                <XAxis dataKey="name" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                <YAxis
+                  tickFormatter={yAxisFormatter}
+                  className="text-xs"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  width={60}
+                />
                 <ReTooltip
                   formatter={(value: number) => [fmtBRL(value), "Receita"]}
                   contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
@@ -344,12 +379,12 @@ export default function MetricasAvancadas() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={composicaoReceita} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3}>
-                    {composicaoReceita.map((_, i) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    {composicaoReceita.map((entry, i) => (
+                      <Cell key={i} fill={COLORS_PROG[entry.name] ?? PIE_FALLBACK[i % PIE_FALLBACK.length]} />
                     ))}
                   </Pie>
                   <ReTooltip
-                    formatter={(value: number) => [fmtBRL(value)]}
+                    formatter={(value: number, name: string) => [fmtBRL(value), name]}
                     contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
                   />
                 </PieChart>
@@ -357,8 +392,8 @@ export default function MetricasAvancadas() {
               <div className="flex flex-wrap gap-3 justify-center mt-2">
                 {composicaoReceita.map((d, i) => (
                   <div key={d.name} className="flex items-center gap-1.5 text-xs">
-                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                    <span className="text-muted-foreground">{d.name}</span>
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS_PROG[d.name] ?? PIE_FALLBACK[i % PIE_FALLBACK.length] }} />
+                    <span className="text-muted-foreground">{d.name} — {fmtBRL(d.value)}</span>
                   </div>
                 ))}
               </div>
@@ -408,7 +443,7 @@ export default function MetricasAvancadas() {
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> ≤ 6 meses</span>
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-yellow-500" /> 6–12 meses</span>
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> &gt; 12 meses</span>
-          <span className="ml-auto text-muted-foreground/60">Receita Potencial = processos pendentes de pagamento</span>
+          <span className="ml-auto text-muted-foreground/60">Receita Potencial = honorários ainda não recebidos</span>
         </div>
       </SpotlightCard>
     </div>

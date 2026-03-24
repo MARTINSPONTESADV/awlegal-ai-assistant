@@ -242,6 +242,7 @@ export default function ProcessoDetail() {
                 <DateField label="Data Trânsito em Julgado" value={form.data_transito_julgado} onChange={(v) => set("data_transito_julgado", v)} />
                 <DateField label="Data de Execução" value={form.data_execucao} onChange={(v) => set("data_execucao", v)} />
                 <DateField label="Data de Encerramento" value={form.data_encerramento} onChange={(v) => set("data_encerramento", v)} />
+                <DateField label="Data de Pagamento" value={(form as any).data_pagamento} onChange={(v) => set("data_pagamento", v)} />
                 <DateField label="Data da Últ. Movimentação" value={form.data_ultima_movimentacao ? form.data_ultima_movimentacao.split("T")[0] : null} onChange={(v) => set("data_ultima_movimentacao", v)} />
               </div>
             </CardContent></Card>
