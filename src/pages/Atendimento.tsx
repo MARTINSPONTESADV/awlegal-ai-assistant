@@ -147,7 +147,7 @@ export default function Atendimento() {
           return;
         }
 
-        // ── Batch query: uma única query para previews de todos os leads ──
+        // ── Batch preview: busca últimas mensagens de todos os leads ──
         const phoneNumbers = data.map((l: any) => normalizeWaId(l.whatsapp_numero)).filter(Boolean);
         const batchLimit = Math.min(phoneNumbers.length * 3, 600);
         const { data: previewMsgs } = phoneNumbers.length > 0
@@ -159,48 +159,26 @@ export default function Atendimento() {
               .limit(batchLimit)
           : { data: [] };
 
-        // Mapa keyed por "whatsapp_id||canal" — primeira entrada = mais recente
+        // Preview keyed por phoneKey||canal — resolve JID + 9-prefix
         const previewMap = new Map<string, any>();
         for (const msg of (previewMsgs || [])) {
-          const key = `${normalizeWaId(msg.whatsapp_id)}||${msg.canal ?? "null"}`;
+          const pk = phoneKey(msg.whatsapp_id || "");
+          const mc = msg.canal ?? "null";
+          const key = `${pk}||${mc}`;
           if (!previewMap.has(key)) previewMap.set(key, msg);
         }
 
         const enriched = data.map((lead: any) => {
           const normalNum = normalizeWaId(lead.whatsapp_numero || "");
+          const pk = phoneKey(normalNum);
           const leadCanal = lead.canal === "martins_pontes" ? "martins_pontes" : "null";
-          const preview = previewMap.get(`${normalNum}||${leadCanal}`)
-            ?? previewMap.get(`${normalNum}||resolva_ja`)
+          const preview = previewMap.get(`${pk}||${leadCanal}`)
+            ?? previewMap.get(`${pk}||resolva_ja`)
             ?? null;
           return { ...lead, whatsapp_numero: normalNum, historico_mensagens: preview ? [preview] : [] };
         });
 
-        // ── Dedup interno de enriched: trata canal=null e canal="resolva_ja" como mesmo ──
-        // Necessário porque controle_bot pode ter duas rows para o mesmo número (JID vs limpo)
-        // com canal diferente, gerando duplicatas mesmo após normalizar whatsapp_numero
-        const enrichedSeen = new Map<string, any>();
-        for (const lead of enriched) {
-          const dedupCanal = (!lead.canal || lead.canal === "resolva_ja") ? "rj" : lead.canal;
-          const key = `${lead.whatsapp_numero}||${dedupCanal}`;
-          if (!enrichedSeen.has(key)) {
-            enrichedSeen.set(key, lead);
-          } else {
-            const prev = enrichedSeen.get(key)!;
-            enrichedSeen.set(key, {
-              ...prev,
-              nome_contato: prev.nome_contato || lead.nome_contato,
-              nome: prev.nome || lead.nome,
-              historico_mensagens: (lead.historico_mensagens?.length && !prev.historico_mensagens?.length)
-                ? lead.historico_mensagens
-                : prev.historico_mensagens,
-            });
-          }
-        }
-        const enrichedFinal = Array.from(enrichedSeen.values());
-
-        // ── Carrega contatos MP de historico_mensagens (fonte de verdade da aba MP) ──
-        // Necessário porque um número pode estar em controle_bot como "resolva_ja"
-        // mas também mandar mensagens para o canal Martins Pontes.
+        // ── Carrega contatos MP de historico_mensagens ──
         const mpTable = supabase.from("historico_mensagens") as any;
         const { data: mpRaw } = await mpTable
           .select("whatsapp_id, conteudo, tipo_midia, created_at")
@@ -212,22 +190,23 @@ export default function Atendimento() {
         for (const msg of (mpRaw || [])) {
           if (!msg.whatsapp_id) continue;
           const norm = normalizeWaId(msg.whatsapp_id);
-          if (mpMap.has(norm)) continue;
-          mpMap.set(norm, { ...msg, whatsapp_id: norm });
+          const pk = phoneKey(norm);
+          if (mpMap.has(pk)) continue;
+          mpMap.set(pk, { ...msg, whatsapp_id: norm });
         }
 
-        // Set de números excluídos (para filtrar MP provenientes de historico_mensagens)
-        const excludedSet = new Set(
-          (data || []).filter((l: any) => l.excluido === true).map((l: any) => l.whatsapp_numero)
+        // Set de phoneKeys excluídos
+        const excludedKeys = new Set(
+          (data || []).filter((l: any) => l.excluido === true).map((l: any) => phoneKey(l.whatsapp_numero || ""))
         );
 
         const mpLeads = Array.from(mpMap.entries())
-          .filter(([phone]) => !excludedSet.has(phone))
-          .map(([phone, lastMsg]) => {
-            const cb = enrichedFinal.find((l: any) => l.whatsapp_numero === phone);
+          .filter(([pk]) => !excludedKeys.has(pk))
+          .map(([pk, lastMsg]) => {
+            const cb = enriched.find((l: any) => phoneKey(l.whatsapp_numero) === pk);
             return {
               ...(cb || {}),
-              whatsapp_numero: phone,
+              whatsapp_numero: lastMsg.whatsapp_id,
               canal: "martins_pontes",
               bot_ativo: cb?.bot_ativo ?? false,
               arquivado: cb?.arquivado_mp ?? false,
@@ -235,7 +214,7 @@ export default function Atendimento() {
             };
           });
 
-        // ── Carrega contatos RJ de historico_mensagens (contatos MP que tbm usam RJ) ──
+        // ── Carrega contatos RJ de historico_mensagens ──
         const { data: rjRaw } = await supabase
           .from("historico_mensagens")
           .select("whatsapp_id, conteudo, tipo_midia, created_at")
@@ -247,19 +226,17 @@ export default function Atendimento() {
         for (const msg of (rjRaw || [])) {
           if (!msg.whatsapp_id) continue;
           const norm = normalizeWaId(msg.whatsapp_id);
-          if (rjMap.has(norm)) continue;
-          rjMap.set(norm, { ...msg, whatsapp_id: norm });
+          const pk = phoneKey(norm);
+          if (rjMap.has(pk)) continue;
+          rjMap.set(pk, { ...msg, whatsapp_id: norm });
         }
 
         const rjLeads = Array.from(rjMap.entries())
-          .filter(([phone]) =>
-            !enrichedFinal.find((l: any) => l.whatsapp_numero === phone && (!l.canal || l.canal === "resolva_ja"))
-          )
-          .map(([phone, lastMsg]) => {
-            const cb = enrichedFinal.find((l: any) => l.whatsapp_numero === phone);
+          .map(([pk, lastMsg]) => {
+            const cb = enriched.find((l: any) => phoneKey(l.whatsapp_numero) === pk);
             return {
               ...(cb || {}),
-              whatsapp_numero: phone,
+              whatsapp_numero: lastMsg.whatsapp_id,
               canal: "resolva_ja",
               bot_ativo: cb?.bot_ativo ?? false,
               arquivado: cb?.arquivado ?? false,
@@ -267,18 +244,32 @@ export default function Atendimento() {
             };
           });
 
-        // Mescla deduplicando por (whatsapp_numero + canal normalizado)
-        // Normaliza canal para tratar null e "resolva_ja" como o mesmo canal (RJ)
-        const seen = new Set<string>();
-        const combined = [...enrichedFinal, ...mpLeads, ...rjLeads].filter((l: any) => {
-          const dedupCanal = (!l.canal || l.canal === "resolva_ja") ? "rj" : l.canal;
-          const key = `${l.whatsapp_numero}||${dedupCanal}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
+        // ── Merge final: agrupa por phoneKey + canal normalizado ──
+        // Resolve JIDs, 9-prefix, e qualquer inconsistência de formato
+        const mergeMap = new Map<string, any>();
+        for (const lead of [...enriched, ...mpLeads, ...rjLeads]) {
+          const pk = phoneKey(lead.whatsapp_numero || "");
+          if (!pk) continue;
+          const nc = (!lead.canal || lead.canal === "resolva_ja") ? "rj" : lead.canal;
+          const key = `${pk}||${nc}`;
+          if (!mergeMap.has(key)) {
+            mergeMap.set(key, lead);
+          } else {
+            const prev = mergeMap.get(key)!;
+            const hasNewMsgs = lead.historico_mensagens?.length && !prev.historico_mensagens?.length;
+            mergeMap.set(key, {
+              ...prev,
+              whatsapp_numero: hasNewMsgs ? lead.whatsapp_numero : prev.whatsapp_numero,
+              nome_contato: prev.nome_contato || lead.nome_contato,
+              nome: prev.nome || lead.nome,
+              bot_ativo: prev.bot_ativo ?? lead.bot_ativo,
+              historico_mensagens: hasNewMsgs ? lead.historico_mensagens : prev.historico_mensagens,
+            });
+          }
+        }
+        const combined = Array.from(mergeMap.values());
 
-        // Carrega estágios do funil em batch para habilitar filtro por stage
+        // Carrega estágios do funil em batch
         const { data: stagesData } = await (supabase as any)
           .from("controle_atendimento")
           .select("whatsapp_id, status_funil");
@@ -290,7 +281,7 @@ export default function Atendimento() {
           status_funil: stagesMap[lead.whatsapp_numero] || "Triagem",
         }));
 
-        console.log("[Atendimento] Leads carregados:", combined.length, "(RJ:", enriched.length, "MP:", mpLeads.length, ")");
+        console.log("[Atendimento] Leads carregados:", combined.length, "(enriched:", enriched.length, "MP:", mpLeads.length, "RJ:", rjLeads.length, ")");
         setRawLeads(withStages);
       } catch (err) {
         console.error("[Atendimento] Exceção fatal:", err);

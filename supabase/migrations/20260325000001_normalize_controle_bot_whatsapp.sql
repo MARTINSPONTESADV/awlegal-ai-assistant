@@ -1,36 +1,51 @@
 -- Migration: Remove sufixos JID de controle_bot.whatsapp_numero com merge de duplicatas
--- Contexto: controle_bot tem duas rows para o mesmo número físico (JID vs limpo)
--- com canal e nome_contato potencialmente diferentes. Precisamos:
--- 1. Mesclar dados da row JID para a row limpa
--- 2. Deletar a row JID
--- 3. Para JID sem contraparte limpa, apenas remover o sufixo
+-- Executado manualmente via Supabase MCP em 2026-03-25
+-- Contexto: controle_bot tinha rows com JID (@s.whatsapp.net, @lid, @c.us) e
+-- duplicatas por 9-prefix brasileiro (559299722659 vs 5592999722659).
+-- Merge usa últimos 8 dígitos (phoneKey) para identificar o mesmo telefone.
 
--- Step 1: Mesclar dados (nome_contato, canal, bot_ativo) de rows JID para rows limpas
-UPDATE public.controle_bot AS clean
+-- Step 1: Deletar variantes @lid duplicadas (manter row com menor length)
+DELETE FROM controle_bot
+WHERE whatsapp_numero IN (
+  SELECT whatsapp_numero FROM (
+    SELECT whatsapp_numero,
+      ROW_NUMBER() OVER (
+        PARTITION BY regexp_replace(whatsapp_numero, '@[^@]+$', '')
+        ORDER BY length(whatsapp_numero)
+      ) AS rn
+    FROM controle_bot
+    WHERE whatsapp_numero LIKE '%@%'
+  ) sub WHERE rn > 1
+);
+
+-- Step 2: Merge dados de JID rows para clean rows (match por últimos 8 dígitos)
+UPDATE controle_bot AS clean
 SET
-  nome_contato = COALESCE(clean.nome_contato, jid_data.nome_contato),
-  canal = COALESCE(clean.canal, jid_data.canal),
-  bot_ativo = COALESCE(clean.bot_ativo, jid_data.bot_ativo)
+  nome_contato = COALESCE(clean.nome_contato, jid.nome_contato),
+  canal = COALESCE(clean.canal, jid.canal),
+  bot_ativo = COALESCE(clean.bot_ativo, jid.bot_ativo)
 FROM (
-  SELECT
-    regexp_replace(whatsapp_numero, '@[^@]+$', '') AS clean_number,
-    nome_contato,
-    canal,
-    bot_ativo
-  FROM public.controle_bot
-  WHERE whatsapp_numero LIKE '%@%'
-) AS jid_data
-WHERE clean.whatsapp_numero = jid_data.clean_number
-  AND clean.whatsapp_numero NOT LIKE '%@%';
+  SELECT whatsapp_numero, nome_contato, canal, bot_ativo,
+    right(regexp_replace(whatsapp_numero, '@[^@]+$', ''), 8) AS phone8
+  FROM controle_bot WHERE whatsapp_numero LIKE '%@%'
+) AS jid
+WHERE clean.whatsapp_numero NOT LIKE '%@%'
+  AND length(clean.whatsapp_numero) > 0
+  AND right(clean.whatsapp_numero, 8) = jid.phone8;
 
--- Step 2: Deletar rows JID que têm uma row limpa correspondente
-DELETE FROM public.controle_bot
+-- Step 3: Deletar JID rows que foram mergeadas em clean rows
+DELETE FROM controle_bot
 WHERE whatsapp_numero LIKE '%@%'
-  AND regexp_replace(whatsapp_numero, '@[^@]+$', '') IN (
-    SELECT whatsapp_numero FROM public.controle_bot WHERE whatsapp_numero NOT LIKE '%@%'
+  AND right(regexp_replace(whatsapp_numero, '@[^@]+$', ''), 8) IN (
+    SELECT right(whatsapp_numero, 8)
+    FROM controle_bot
+    WHERE whatsapp_numero NOT LIKE '%@%' AND length(whatsapp_numero) > 0
   );
 
--- Step 3: Renomear rows JID sem contraparte limpa (seguro agora sem conflito de PK)
-UPDATE public.controle_bot
+-- Step 4: Renomear JID rows restantes (sem conflito de PK)
+UPDATE controle_bot
 SET whatsapp_numero = regexp_replace(whatsapp_numero, '@[^@]+$', '')
 WHERE whatsapp_numero LIKE '%@%';
+
+-- Step 5: Deletar row com PK vazia (lixo)
+DELETE FROM controle_bot WHERE whatsapp_numero = '';
