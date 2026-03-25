@@ -370,10 +370,12 @@ export default function Atendimento() {
     if (!selectedChat) return;
     async function loadMsgs() {
       const normalizedChat = normalizeWaId(selectedChat!);
+      // OR abrange formato limpo ("559...") E com sufixo JID ("559...@s.whatsapp.net")
+      // para ser resiliente a workflows n8n que ainda não foram corrigidos
       let msgQuery: any = supabase
         .from("historico_mensagens")
         .select("*")
-        .eq("whatsapp_id", normalizedChat)
+        .or(`whatsapp_id.eq.${normalizedChat},whatsapp_id.like.${normalizedChat}@%`)
         .order("created_at", { ascending: false })
         .limit(100);
       if (canal === "martins_pontes") {
@@ -387,22 +389,28 @@ export default function Atendimento() {
     loadMsgs();
 
     const normalizedChatId = normalizeWaId(selectedChat!);
+    // Handler compartilhado pelos dois filtros
+    const handleMsgChange = (payload: any) => {
+      if (payload.eventType === "INSERT") {
+        setMensagens((prev) => [...prev, payload.new as Mensagem]);
+      } else if (payload.eventType === "UPDATE") {
+        setMensagens((prev) => prev.map(m => m.id === payload.new.id ? (payload.new as Mensagem) : m));
+      } else if (payload.eventType === "DELETE") {
+        setMensagens((prev) => prev.filter(m => m.id !== payload.old.id));
+      }
+    };
+    // Dois filtros: formato limpo + formato com @s.whatsapp.net
+    // (workflows n8n podem salvar com ou sem sufixo JID)
     const channel = supabase
       .channel(`chat-${normalizedChatId}`)
       .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "historico_mensagens",
+        event: "*", schema: "public", table: "historico_mensagens",
         filter: `whatsapp_id=eq.${normalizedChatId}`,
-      }, (payload) => {
-        if (payload.eventType === "INSERT") {
-          setMensagens((prev) => [...prev, payload.new as Mensagem]);
-        } else if (payload.eventType === "UPDATE") {
-          setMensagens((prev) => prev.map(m => m.id === payload.new.id ? (payload.new as Mensagem) : m));
-        } else if (payload.eventType === "DELETE") {
-          setMensagens((prev) => prev.filter(m => m.id !== payload.old.id));
-        }
-      })
+      }, handleMsgChange)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "historico_mensagens",
+        filter: `whatsapp_id=eq.${normalizedChatId}@s.whatsapp.net`,
+      }, handleMsgChange)
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
