@@ -603,7 +603,7 @@ export default function Atendimento() {
       }
 
       // Verifica que o valor realmente mudou na resposta
-      const dbVal = restData[0]?.bot_ativo;
+      const dbVal = restData[0]?.out_bot_ativo ?? restData[0]?.bot_ativo;
       if (dbVal !== newVal) {
         console.error("[toggleBot] DB retornou bot_ativo =", dbVal, "esperado:", newVal);
         throw new Error("Valor não persistiu no banco");
