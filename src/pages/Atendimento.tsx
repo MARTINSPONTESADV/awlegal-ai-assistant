@@ -148,7 +148,7 @@ export default function Atendimento() {
         }
 
         // ── Batch query: uma única query para previews de todos os leads ──
-        const phoneNumbers = data.map((l: any) => l.whatsapp_numero).filter(Boolean);
+        const phoneNumbers = data.map((l: any) => normalizeWaId(l.whatsapp_numero)).filter(Boolean);
         const batchLimit = Math.min(phoneNumbers.length * 3, 600);
         const { data: previewMsgs } = phoneNumbers.length > 0
           ? await supabase
@@ -162,16 +162,17 @@ export default function Atendimento() {
         // Mapa keyed por "whatsapp_id||canal" — primeira entrada = mais recente
         const previewMap = new Map<string, any>();
         for (const msg of (previewMsgs || [])) {
-          const key = `${msg.whatsapp_id}||${msg.canal ?? "null"}`;
+          const key = `${normalizeWaId(msg.whatsapp_id)}||${msg.canal ?? "null"}`;
           if (!previewMap.has(key)) previewMap.set(key, msg);
         }
 
         const enriched = data.map((lead: any) => {
+          const normalNum = normalizeWaId(lead.whatsapp_numero || "");
           const leadCanal = lead.canal === "martins_pontes" ? "martins_pontes" : "null";
-          const preview = previewMap.get(`${lead.whatsapp_numero}||${leadCanal}`)
-            ?? previewMap.get(`${lead.whatsapp_numero}||resolva_ja`)
+          const preview = previewMap.get(`${normalNum}||${leadCanal}`)
+            ?? previewMap.get(`${normalNum}||resolva_ja`)
             ?? null;
-          return { ...lead, historico_mensagens: preview ? [preview] : [] };
+          return { ...lead, whatsapp_numero: normalNum, historico_mensagens: preview ? [preview] : [] };
         });
 
         // ── Carrega contatos MP de historico_mensagens (fonte de verdade da aba MP) ──
