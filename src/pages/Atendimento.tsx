@@ -39,6 +39,12 @@ function phoneKey(num: string): string {
   return num.replace(/\D/g, "").slice(-8);
 }
 
+// Remove sufixos JID do WhatsApp (@s.whatsapp.net, @c.us, @lid, @g.us)
+function normalizeWaId(id: string): string {
+  if (!id) return id;
+  return id.replace(/@[^@]+$/i, "");
+}
+
 // ── Timezone helpers (America/Manaus = UTC-4) ──
 const TZ = "America/Manaus";
 
@@ -180,8 +186,10 @@ export default function Atendimento() {
 
         const mpMap = new Map<string, any>();
         for (const msg of (mpRaw || [])) {
-          if (!msg.whatsapp_id || mpMap.has(msg.whatsapp_id)) continue;
-          mpMap.set(msg.whatsapp_id, msg);
+          if (!msg.whatsapp_id) continue;
+          const norm = normalizeWaId(msg.whatsapp_id);
+          if (mpMap.has(norm)) continue;
+          mpMap.set(norm, { ...msg, whatsapp_id: norm });
         }
 
         // Set de números excluídos (para filtrar MP provenientes de historico_mensagens)
@@ -213,8 +221,10 @@ export default function Atendimento() {
 
         const rjMap = new Map<string, any>();
         for (const msg of (rjRaw || [])) {
-          if (!msg.whatsapp_id || rjMap.has(msg.whatsapp_id)) continue;
-          rjMap.set(msg.whatsapp_id, msg);
+          if (!msg.whatsapp_id) continue;
+          const norm = normalizeWaId(msg.whatsapp_id);
+          if (rjMap.has(norm)) continue;
+          rjMap.set(norm, { ...msg, whatsapp_id: norm });
         }
 
         const rjLeads = Array.from(rjMap.entries())
@@ -337,10 +347,11 @@ export default function Atendimento() {
   useEffect(() => {
     if (!selectedChat) return;
     async function loadMsgs() {
+      const normalizedChat = normalizeWaId(selectedChat!);
       let msgQuery: any = supabase
         .from("historico_mensagens")
         .select("*")
-        .eq("whatsapp_id", selectedChat)
+        .eq("whatsapp_id", normalizedChat)
         .order("created_at", { ascending: false })
         .limit(100);
       if (canal === "martins_pontes") {
@@ -353,13 +364,14 @@ export default function Atendimento() {
     }
     loadMsgs();
 
+    const normalizedChatId = normalizeWaId(selectedChat!);
     const channel = supabase
-      .channel(`chat-${selectedChat}`)
+      .channel(`chat-${normalizedChatId}`)
       .on("postgres_changes", {
         event: "*",
         schema: "public",
         table: "historico_mensagens",
-        filter: `whatsapp_id=eq.${selectedChat}`,
+        filter: `whatsapp_id=eq.${normalizedChatId}`,
       }, (payload) => {
         if (payload.eventType === "INSERT") {
           setMensagens((prev) => [...prev, payload.new as Mensagem]);
@@ -390,7 +402,7 @@ export default function Atendimento() {
         table: "historico_mensagens",
       }, (payload) => {
         const nova = payload.new as any;
-        const remetente = nova.whatsapp_id;
+        const remetente = normalizeWaId(nova.whatsapp_id);
         if (!remetente) return;
 
         setRawLeads((prev) => {
