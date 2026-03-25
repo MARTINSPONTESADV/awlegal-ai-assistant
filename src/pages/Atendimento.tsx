@@ -195,9 +195,13 @@ export default function Atendimento() {
           mpMap.set(pk, { ...msg, whatsapp_id: norm });
         }
 
-        // Set de phoneKeys excluídos
+        // Busca separada para números excluídos (a query principal já filtra com .neq, então data nunca os contém)
+        const { data: deletedData } = await (supabase as any)
+          .from("controle_bot")
+          .select("whatsapp_numero")
+          .eq("excluido", true);
         const excludedKeys = new Set(
-          (data || []).filter((l: any) => l.excluido === true).map((l: any) => phoneKey(l.whatsapp_numero || ""))
+          (deletedData || []).map((l: any) => phoneKey(normalizeWaId(l.whatsapp_numero || "")))
         );
 
         const mpLeads = Array.from(mpMap.entries())
@@ -232,6 +236,7 @@ export default function Atendimento() {
         }
 
         const rjLeads = Array.from(rjMap.entries())
+          .filter(([pk]) => !excludedKeys.has(pk))
           .map(([pk, lastMsg]) => {
             const cb = enriched.find((l: any) => phoneKey(l.whatsapp_numero) === pk);
             return {
@@ -758,13 +763,19 @@ export default function Atendimento() {
       `Excluir "${currentChat.nomeExibicao}"? O contato será removido permanentemente da lista.`
     );
     if (!confirmar) return;
-    await (supabase as any)
-      .from("controle_bot")
-      .upsert({ whatsapp_numero: selectedChat, excluido: true } as any,
-               { onConflict: "whatsapp_numero" });
-    setRawLeads((prev) => prev.filter((l: any) => l.whatsapp_numero !== selectedChat));
-    setSelectedChat(null);
-    toast({ title: "Contato excluído" });
+    try {
+      const { error } = await (supabase as any)
+        .from("controle_bot")
+        .upsert({ whatsapp_numero: selectedChat, excluido: true } as any,
+                 { onConflict: "whatsapp_numero" });
+      if (error) throw error;
+      setRawLeads((prev) => prev.filter((l: any) => l.whatsapp_numero !== selectedChat));
+      setSelectedChat(null);
+      toast({ title: "Contato excluído" });
+    } catch (err) {
+      console.error("[deleteContact] Erro:", err);
+      toast({ title: "Erro ao excluir contato", variant: "destructive" });
+    }
   };
 
   // ── Criar contato no canal MP ──
