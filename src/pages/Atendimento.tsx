@@ -175,6 +175,29 @@ export default function Atendimento() {
           return { ...lead, whatsapp_numero: normalNum, historico_mensagens: preview ? [preview] : [] };
         });
 
+        // ── Dedup interno de enriched: trata canal=null e canal="resolva_ja" como mesmo ──
+        // Necessário porque controle_bot pode ter duas rows para o mesmo número (JID vs limpo)
+        // com canal diferente, gerando duplicatas mesmo após normalizar whatsapp_numero
+        const enrichedSeen = new Map<string, any>();
+        for (const lead of enriched) {
+          const dedupCanal = (!lead.canal || lead.canal === "resolva_ja") ? "rj" : lead.canal;
+          const key = `${lead.whatsapp_numero}||${dedupCanal}`;
+          if (!enrichedSeen.has(key)) {
+            enrichedSeen.set(key, lead);
+          } else {
+            const prev = enrichedSeen.get(key)!;
+            enrichedSeen.set(key, {
+              ...prev,
+              nome_contato: prev.nome_contato || lead.nome_contato,
+              nome: prev.nome || lead.nome,
+              historico_mensagens: (lead.historico_mensagens?.length && !prev.historico_mensagens?.length)
+                ? lead.historico_mensagens
+                : prev.historico_mensagens,
+            });
+          }
+        }
+        const enrichedFinal = Array.from(enrichedSeen.values());
+
         // ── Carrega contatos MP de historico_mensagens (fonte de verdade da aba MP) ──
         // Necessário porque um número pode estar em controle_bot como "resolva_ja"
         // mas também mandar mensagens para o canal Martins Pontes.
@@ -201,7 +224,7 @@ export default function Atendimento() {
         const mpLeads = Array.from(mpMap.entries())
           .filter(([phone]) => !excludedSet.has(phone))
           .map(([phone, lastMsg]) => {
-            const cb = enriched.find((l: any) => l.whatsapp_numero === phone);
+            const cb = enrichedFinal.find((l: any) => l.whatsapp_numero === phone);
             return {
               ...(cb || {}),
               whatsapp_numero: phone,
@@ -230,10 +253,10 @@ export default function Atendimento() {
 
         const rjLeads = Array.from(rjMap.entries())
           .filter(([phone]) =>
-            !enriched.find((l: any) => l.whatsapp_numero === phone && (!l.canal || l.canal === "resolva_ja"))
+            !enrichedFinal.find((l: any) => l.whatsapp_numero === phone && (!l.canal || l.canal === "resolva_ja"))
           )
           .map(([phone, lastMsg]) => {
-            const cb = enriched.find((l: any) => l.whatsapp_numero === phone);
+            const cb = enrichedFinal.find((l: any) => l.whatsapp_numero === phone);
             return {
               ...(cb || {}),
               whatsapp_numero: phone,
@@ -244,10 +267,12 @@ export default function Atendimento() {
             };
           });
 
-        // Mescla deduplicando por (whatsapp_numero + canal)
+        // Mescla deduplicando por (whatsapp_numero + canal normalizado)
+        // Normaliza canal para tratar null e "resolva_ja" como o mesmo canal (RJ)
         const seen = new Set<string>();
-        const combined = [...enriched, ...mpLeads, ...rjLeads].filter((l: any) => {
-          const key = `${l.whatsapp_numero}||${l.canal ?? "null"}`;
+        const combined = [...enrichedFinal, ...mpLeads, ...rjLeads].filter((l: any) => {
+          const dedupCanal = (!l.canal || l.canal === "resolva_ja") ? "rj" : l.canal;
+          const key = `${l.whatsapp_numero}||${dedupCanal}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
