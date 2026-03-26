@@ -223,7 +223,7 @@ export default function Generator() {
       const form = new FormData();
       form.append("file", doc.blob, doc.name);
       const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/convert-to-pdf`,
+        `${import.meta.env.VITE_SUPABASE_URL || 'https://occoggvuaevikpuqnmge.supabase.co'}/functions/v1/convert-to-pdf`,
         { method: "POST", body: form }
       );
       if (!res.ok) {

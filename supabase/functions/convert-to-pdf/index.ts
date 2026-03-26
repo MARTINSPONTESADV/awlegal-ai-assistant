@@ -12,10 +12,10 @@ serve(async (req) => {
   }
 
   try {
-    const secret = Deno.env.get("CONVERTAPI_SECRET");
-    if (!secret) {
+    const apiKey = Deno.env.get("CLOUDMERSIVE_API_KEY");
+    if (!apiKey) {
       return new Response(
-        JSON.stringify({ error: "CONVERTAPI_SECRET not configured" }),
+        JSON.stringify({ error: "CLOUDMERSIVE_API_KEY not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -31,78 +31,38 @@ serve(async (req) => {
 
     console.log(`Processing file: ${file.name}, size: ${file.size} bytes`);
 
-    // Upload directly as multipart to ConvertAPI to avoid base64 memory overhead
+    // Send to Cloudmersive DOCX→PDF API
     const uploadForm = new FormData();
-    uploadForm.append("File", file, file.name);
-    uploadForm.append("StoreFile", "true");
+    uploadForm.append("inputFile", file, file.name);
 
     const convertRes = await fetch(
-      `https://v2.convertapi.com/convert/docx/to/pdf?Secret=${secret}`,
+      "https://api.cloudmersive.com/convert/docx/to/pdf",
       {
         method: "POST",
+        headers: { "Apikey": apiKey },
         body: uploadForm,
       }
     );
 
     if (!convertRes.ok) {
       const errText = await convertRes.text();
-      console.error("ConvertAPI error:", convertRes.status, errText);
+      console.error("Cloudmersive error:", convertRes.status, errText);
       return new Response(
-        JSON.stringify({ error: `ConvertAPI error: ${convertRes.status}` }),
+        JSON.stringify({ error: `Cloudmersive error: ${convertRes.status} - ${errText}` }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const result = await convertRes.json();
-    const pdfFile = result.Files?.[0];
-    if (!pdfFile) {
-      console.error("No files in response:", JSON.stringify(result));
-      return new Response(
-        JSON.stringify({ error: "No PDF file returned" }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Cloudmersive returns the PDF binary directly in the response body
+    const pdfBytes = await convertRes.arrayBuffer();
 
-    // Download PDF from URL (avoids holding large base64 in memory)
-    const pdfUrl = pdfFile.Url || pdfFile.FileUrl;
-    if (pdfUrl) {
-      console.log("Downloading PDF from URL");
-      const pdfRes = await fetch(pdfUrl);
-      if (!pdfRes.ok) {
-        return new Response(
-          JSON.stringify({ error: "Failed to download converted PDF" }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      // Stream the response directly
-      return new Response(pdfRes.body, {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="${file.name.replace(".docx", ".pdf")}"`,
-        },
-      });
-    }
-
-    // Fallback: use FileData if no URL
-    if (pdfFile.FileData) {
-      console.log("Using FileData fallback");
-      const raw = atob(pdfFile.FileData);
-      const pdfBytes = Uint8Array.from(raw, (c: string) => c.charCodeAt(0));
-      return new Response(pdfBytes, {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="${file.name.replace(".docx", ".pdf")}"`,
-        },
-      });
-    }
-
-    return new Response(
-      JSON.stringify({ error: "No PDF data returned" }),
-      { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(pdfBytes, {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${file.name.replace(".docx", ".pdf")}"`,
+      },
+    });
   } catch (err) {
     console.error("Edge function error:", err);
     return new Response(
