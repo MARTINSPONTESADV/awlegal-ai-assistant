@@ -48,9 +48,20 @@ function normalizeWaId(id: string): string {
 // ── Timezone helpers (America/Manaus = UTC-4) ──
 const TZ = "America/Manaus";
 
+function isHoje(dataStr: string): boolean {
+  try {
+    const hoje = formatInTimeZone(new Date(), TZ, "yyyy-MM-dd");
+    const d = formatInTimeZone(new Date(dataStr), TZ, "yyyy-MM-dd");
+    return hoje === d;
+  } catch { return false; }
+}
+
 function fmtHora(d: string | null | undefined): string {
   if (!d) return "";
-  try { return formatInTimeZone(new Date(d), TZ, "HH:mm"); } catch { return ""; }
+  try { 
+    if (isHoje(d)) return formatInTimeZone(new Date(d), TZ, "HH:mm");
+    return formatInTimeZone(new Date(d), TZ, "dd/MM HH:mm");
+  } catch { return ""; }
 }
 
 function fmtDataHora(d: string | null | undefined): string {
