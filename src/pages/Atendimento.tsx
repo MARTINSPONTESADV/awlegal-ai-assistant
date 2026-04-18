@@ -908,17 +908,24 @@ export default function Atendimento() {
       </div>
       <ScrollArea className="flex-1">
         {isLoadingInitial ? (
-          <div className="space-y-1">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="flex items-start gap-3 px-3 py-3 border-b border-white/[0.04]">
-                <div className="h-10 w-10 rounded-full bg-muted/30 animate-pulse shrink-0" />
-                <div className="flex-1 space-y-2 pt-1">
-                  <div className="h-3 rounded bg-muted/30 animate-pulse w-[60%]" />
-                  <div className="h-2.5 rounded bg-muted/20 animate-pulse w-[85%]" />
+          <div>
+            <div className="flex items-center gap-2 px-4 py-3 text-xs font-medium text-violet-300/90 border-b border-white/[0.04]">
+              <div className="h-3 w-3 rounded-full border-2 border-violet-400/40 border-t-violet-400 animate-spin" />
+              <span>Carregando conversas…</span>
+            </div>
+            <div className="space-y-0">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex items-start gap-3 px-3 py-3 border-b border-white/[0.04]">
+                  <div className="h-10 w-10 rounded-full bg-violet-500/10 ring-1 ring-violet-400/10 animate-pulse shrink-0" />
+                  <div className="flex-1 space-y-2 pt-1">
+                    <div className="h-3 rounded bg-white/10 animate-pulse" style={{ width: `${55 + (i * 7) % 30}%` }} />
+                    <div className="h-2.5 rounded bg-white/5 animate-pulse" style={{ width: `${70 + (i * 11) % 20}%` }} />
+                    <div className="h-2 rounded bg-white/5 animate-pulse w-12" />
+                  </div>
+                  <div className="h-2 rounded bg-white/10 animate-pulse w-8 mt-2" />
                 </div>
-                <div className="h-2 rounded bg-muted/25 animate-pulse w-8 mt-2" />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         ) : filteredChats.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">

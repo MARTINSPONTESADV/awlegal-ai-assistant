@@ -33,17 +33,21 @@ export type AtendimentoLead = {
 };
 
 async function fetchAtendimentoLeads(): Promise<AtendimentoLead[]> {
-  // Fase 1 — queries paralelas independentes
+  // Fase 1 — queries paralelas independentes.
+  // IMPORTANTE: usamos a view `historico_mensagens_preview` em vez da tabela
+  // direta porque o campo `conteudo` contém data URIs base64 pra audio/image/
+  // document (até 20MB/row). A view trunca conteudo em 200 chars e retorna
+  // NULL pra mídia — reduz payload de dezenas de MB pra centenas de KB.
   const [controleBotRes, mpRawRes, rjRawRes, stagesRes] = await Promise.all([
     (supabase as any).from("controle_bot").select("*"),
     (supabase as any)
-      .from("historico_mensagens")
+      .from("historico_mensagens_preview")
       .select("whatsapp_id, conteudo, tipo_midia, created_at")
       .eq("canal", "martins_pontes")
       .order("created_at", { ascending: false })
       .limit(500),
-    supabase
-      .from("historico_mensagens")
+    (supabase as any)
+      .from("historico_mensagens_preview")
       .select("whatsapp_id, conteudo, tipo_midia, created_at")
       .eq("canal", "resolva_ja")
       .order("created_at", { ascending: false })
@@ -67,8 +71,8 @@ async function fetchAtendimentoLeads(): Promise<AtendimentoLead[]> {
   const phoneNumbers = data.map((l: any) => normalizeWaId(l.whatsapp_numero)).filter(Boolean);
   const batchLimit = Math.min(phoneNumbers.length * 3, 600);
   const { data: previewMsgs } = phoneNumbers.length > 0
-    ? await supabase
-        .from("historico_mensagens")
+    ? await (supabase as any)
+        .from("historico_mensagens_preview")
         .select("whatsapp_id, conteudo, created_at, tipo_midia, canal")
         .in("whatsapp_id", phoneNumbers)
         .order("created_at", { ascending: false })
