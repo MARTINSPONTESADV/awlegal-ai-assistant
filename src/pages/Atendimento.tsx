@@ -26,7 +26,7 @@ import ChatMediaRenderer from "@/components/atendimento/ChatMediaRenderer";
 import AudioRecorder from "@/components/atendimento/AudioRecorder";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const N8N_WEBHOOK_URL = "https://awlegaltech-n8n.cloudfy.live/webhook/envio-manual-aw";
+const N8N_WEBHOOK_URL = "https://n8n.awlegaltech.com.br/webhook/envio-manual-aw";
 
 type Canal = "resolva_ja" | "martins_pontes";
 
@@ -624,7 +624,7 @@ export default function Atendimento() {
 
       // Quando reativar o bot, limpar também o Redis block
       if (newVal) {
-        fetch("https://awlegaltech-n8n.cloudfy.live/webhook/reativar-bot", {
+        fetch("https://n8n.awlegaltech.com.br/webhook/reativar-bot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ numero: selectedChat }),
