@@ -108,6 +108,7 @@ export default function Atendimento() {
 
   // ── Estado Base: rawLeads armazena os dados BRUTOS do Supabase ──
   const [rawLeads, setRawLeads] = useState<any[]>([]);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [newMsg, setNewMsg] = useState("");
@@ -141,24 +142,50 @@ export default function Atendimento() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedChatRef = useRef<string | null>(null);
 
-  // ── Fetch: carrega dados brutos de controle_bot (SEM JOIN, SEM coluna arquivado) ──
+  // ── Fetch: carrega dados brutos de controle_bot + histórico em paralelo ──
   useEffect(() => {
     async function load() {
       try {
-        // Query limpa: exclui contatos marcados como excluídos
-        const { data, error } = await (supabase as any).from("controle_bot").select("*").neq("excluido", true);
-        if (error) {
-          console.error("[Atendimento] Erro ao carregar controle_bot:", error);
+        // Fase 1 — queries paralelas que não dependem umas das outras
+        const [
+          controleBotRes,
+          mpRawRes,
+          rjRawRes,
+          stagesRes,
+        ] = await Promise.all([
+          (supabase as any).from("controle_bot").select("*"),
+          (supabase as any).from("historico_mensagens")
+            .select("whatsapp_id, conteudo, tipo_midia, created_at")
+            .eq("canal", "martins_pontes")
+            .order("created_at", { ascending: false })
+            .limit(500),
+          supabase.from("historico_mensagens")
+            .select("whatsapp_id, conteudo, tipo_midia, created_at")
+            .eq("canal", "resolva_ja")
+            .order("created_at", { ascending: false })
+            .limit(500),
+          (supabase as any).from("controle_atendimento").select("whatsapp_id, status_funil"),
+        ]);
+
+        if (controleBotRes.error) {
+          console.error("[Atendimento] Erro ao carregar controle_bot:", controleBotRes.error);
           setRawLeads([]);
           return;
         }
-        if (!data || data.length === 0) {
-          console.warn("[Atendimento] Nenhum lead na controle_bot.");
+        const allBot = controleBotRes.data || [];
+        const data = allBot.filter((l: any) => !l.excluido);
+        const excludedKeys = new Set(
+          allBot.filter((l: any) => l.excluido)
+            .map((l: any) => phoneKey(normalizeWaId(l.whatsapp_numero || "")))
+        );
+
+        if (data.length === 0) {
+          console.warn("[Atendimento] Nenhum lead ativo em controle_bot.");
           setRawLeads([]);
           return;
         }
 
-        // ── Batch preview: busca últimas mensagens de todos os leads ──
+        // Fase 2 — preview batch depende de data (lista de telefones)
         const phoneNumbers = data.map((l: any) => normalizeWaId(l.whatsapp_numero)).filter(Boolean);
         const batchLimit = Math.min(phoneNumbers.length * 3, 600);
         const { data: previewMsgs } = phoneNumbers.length > 0
@@ -189,31 +216,15 @@ export default function Atendimento() {
           return { ...lead, whatsapp_numero: normalNum, historico_mensagens: preview ? [preview] : [] };
         });
 
-        // ── Carrega contatos MP de historico_mensagens ──
-        const mpTable = supabase.from("historico_mensagens") as any;
-        const { data: mpRaw } = await mpTable
-          .select("whatsapp_id, conteudo, tipo_midia, created_at")
-          .eq("canal", "martins_pontes")
-          .order("created_at", { ascending: false })
-          .limit(500);
-
+        // ── Processa contatos MP extraídos do histórico ──
         const mpMap = new Map<string, any>();
-        for (const msg of (mpRaw || [])) {
+        for (const msg of (mpRawRes.data || [])) {
           if (!msg.whatsapp_id) continue;
           const norm = normalizeWaId(msg.whatsapp_id);
           const pk = phoneKey(norm);
           if (mpMap.has(pk)) continue;
           mpMap.set(pk, { ...msg, whatsapp_id: norm });
         }
-
-        // Busca separada para números excluídos (a query principal já filtra com .neq, então data nunca os contém)
-        const { data: deletedData } = await (supabase as any)
-          .from("controle_bot")
-          .select("whatsapp_numero")
-          .eq("excluido", true);
-        const excludedKeys = new Set(
-          (deletedData || []).map((l: any) => phoneKey(normalizeWaId(l.whatsapp_numero || "")))
-        );
 
         const mpLeads = Array.from(mpMap.entries())
           .filter(([pk]) => !excludedKeys.has(pk))
@@ -229,16 +240,9 @@ export default function Atendimento() {
             };
           });
 
-        // ── Carrega contatos RJ de historico_mensagens ──
-        const { data: rjRaw } = await supabase
-          .from("historico_mensagens")
-          .select("whatsapp_id, conteudo, tipo_midia, created_at")
-          .eq("canal", "resolva_ja")
-          .order("created_at", { ascending: false })
-          .limit(500);
-
+        // ── Processa contatos RJ extraídos do histórico ──
         const rjMap = new Map<string, any>();
-        for (const msg of (rjRaw || [])) {
+        for (const msg of (rjRawRes.data || [])) {
           if (!msg.whatsapp_id) continue;
           const norm = normalizeWaId(msg.whatsapp_id);
           const pk = phoneKey(norm);
@@ -261,7 +265,6 @@ export default function Atendimento() {
           });
 
         // ── Merge final: agrupa por phoneKey + canal normalizado ──
-        // Resolve JIDs, 9-prefix, e qualquer inconsistência de formato
         const mergeMap = new Map<string, any>();
         for (const lead of [...enriched, ...mpLeads, ...rjLeads]) {
           const pk = phoneKey(lead.whatsapp_numero || "");
@@ -285,12 +288,8 @@ export default function Atendimento() {
         }
         const combined = Array.from(mergeMap.values());
 
-        // Carrega estágios do funil em batch
-        const { data: stagesData } = await (supabase as any)
-          .from("controle_atendimento")
-          .select("whatsapp_id, status_funil");
         const stagesMap: Record<string, string> = {};
-        (stagesData || []).forEach((s: any) => { if (s.whatsapp_id) stagesMap[s.whatsapp_id] = s.status_funil; });
+        (stagesRes.data || []).forEach((s: any) => { if (s.whatsapp_id) stagesMap[s.whatsapp_id] = s.status_funil; });
 
         const withStages = combined.map((lead: any) => ({
           ...lead,
@@ -302,6 +301,8 @@ export default function Atendimento() {
       } catch (err) {
         console.error("[Atendimento] Exceção fatal:", err);
         setRawLeads([]);
+      } finally {
+        setIsLoadingInitial(false);
       }
     }
     load();
@@ -1064,7 +1065,20 @@ export default function Atendimento() {
         ))}
       </div>
       <ScrollArea className="flex-1">
-        {filteredChats.length === 0 ? (
+        {isLoadingInitial ? (
+          <div className="space-y-1">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="flex items-start gap-3 px-3 py-3 border-b border-white/[0.04]">
+                <div className="h-10 w-10 rounded-full bg-muted/30 animate-pulse shrink-0" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <div className="h-3 rounded bg-muted/30 animate-pulse w-[60%]" />
+                  <div className="h-2.5 rounded bg-muted/20 animate-pulse w-[85%]" />
+                </div>
+                <div className="h-2 rounded bg-muted/25 animate-pulse w-8 mt-2" />
+              </div>
+            ))}
+          </div>
+        ) : filteredChats.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
             <Search className="h-8 w-8 opacity-30" />
             <p className="text-sm">Nenhuma conversa encontrada</p>
