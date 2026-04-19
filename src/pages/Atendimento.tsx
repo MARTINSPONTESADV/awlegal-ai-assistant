@@ -703,6 +703,8 @@ export default function Atendimento() {
   };
 
   const isOutgoing = (msg: Mensagem) => {
+    if (msg.direcao === "saida") return true;
+    if (msg.direcao === "entrada") return false;
     const origem = msg.origem?.toLowerCase();
     return origem === "bot" || origem === "advogado";
   };
