@@ -13,6 +13,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { ChatAvatar } from "@/components/atendimento/ChatAvatar";
+import { supabaseMarketing } from "@/integrations/supabase/clientMarketing";
 import {
   Bot, BotOff, Send, Phone, User, Circle,
   Search, Briefcase, Menu, Info, Pencil, Check, X, Building2, Zap,
@@ -467,6 +468,20 @@ export default function Atendimento() {
       }
 
       console.log("[toggleBot] ✅ Persistido com sucesso! bot_ativo =", newVal);
+
+      // Sincroniza com followup_clientes (Bot/CRM): humano_na_conversa = !bot_ativo
+      // Se bot OFF → atendente assumiu → pausa follow-up automático.
+      // Se bot ON → libera follow-up automático (respeita hard guards do workflow).
+      // Atualiza ambos formatos de remoteid (com e sem @s.whatsapp.net) pra cobrir legados.
+      try {
+        const num = selectedChat.replace(/@s\.whatsapp\.net$/, "");
+        await (supabaseMarketing as any)
+          .from("followup_clientes")
+          .update({ humano_na_conversa: !newVal })
+          .or(`remoteid.eq.${num},remoteid.eq.${num}@s.whatsapp.net`);
+      } catch (fuErr) {
+        console.warn("[toggleBot] Falha ao sincronizar followup_clientes (não crítico):", fuErr);
+      }
 
       // Quando reativar o bot, limpar também o Redis block
       if (newVal) {
