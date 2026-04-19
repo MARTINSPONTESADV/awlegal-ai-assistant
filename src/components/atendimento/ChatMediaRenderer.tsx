@@ -92,20 +92,31 @@ async function srcToBlob(src: string): Promise<Blob> {
 }
 
 
-// ── Abre/baixa arquivo — Web Share API no mobile (iOS/Android), blob download no desktop ──
+// ── Detecta mobile (iOS/Android) — só nesses casos vale usar Web Share API ──
+// No desktop Windows/Mac, `navigator.canShare` retorna true (Edge/Chrome suportam),
+// mas o "share sheet" do SO não sabe baixar nem abrir PDF — apenas encaminhar.
+// Resultado prático: download/preview não funciona no desktop se cair nesse branch.
+function isMobileDevice(): boolean {
+  const ua = (navigator as any).userAgentData;
+  if (ua && typeof ua.mobile === "boolean") return ua.mobile;
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+// ── Abre/baixa arquivo — blob download sempre no desktop, share API só no mobile ──
 async function downloadFile(src: string, filename: string) {
   try {
     const blob = await srcToBlob(src);
-    const file = new File([blob], filename, { type: blob.type });
 
-    // iOS 15.1+ / Android: share sheet nativo
-    // "Quick Look" = visualizar, "Salvar em Arquivos" = baixar
-    if (navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file], title: filename });
-      return;
+    // Mobile: share sheet nativo é a melhor UX ("Salvar em Arquivos" no iOS)
+    if (isMobileDevice() && "canShare" in navigator) {
+      const file = new File([blob], filename, { type: blob.type });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: filename });
+        return;
+      }
     }
 
-    // Desktop: blob URL + <a download>
+    // Desktop (ou mobile sem share API): blob URL + <a download>
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = blobUrl;
@@ -390,16 +401,18 @@ function DocumentMessage({ src, outgoing }: { src: string; outgoing: boolean }) 
     setIsLoadingPreview(true);
     try {
       const blob = await srcToBlob(documentSrc);
-      const file = new File([blob], name, { type: blob.type });
 
-      // iOS/Android: share sheet — "Quick Look" visualiza o PDF nativamente
-      if (navigator.canShare?.({ files: [file] })) {
-        setIsLoadingPreview(false);
-        await navigator.share({ files: [file], title: name });
-        return;
+      // Mobile: share sheet nativo (Quick Look do iOS visualiza PDF direto)
+      if (isMobileDevice() && "canShare" in navigator) {
+        const file = new File([blob], name, { type: blob.type });
+        if (navigator.canShare?.({ files: [file] })) {
+          setIsLoadingPreview(false);
+          await navigator.share({ files: [file], title: name });
+          return;
+        }
       }
 
-      // Desktop: iframe no Dialog
+      // Desktop: iframe no Dialog (renderiza PDF nativamente no Chrome/Edge/Firefox)
       setBlobSrc(URL.createObjectURL(blob));
       setShowPreview(true);
     } catch {

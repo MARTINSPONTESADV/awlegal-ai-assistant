@@ -160,12 +160,13 @@ export default function Atendimento() {
       // nome_contato = nome curado (GPT + edição manual) tem prioridade sobre nome (pushName bruto do WA)
       const nomeExibicao = lead.nome_contato || lead.nome || formatPhone(lead.whatsapp_numero || "") || "Desconhecido";
 
-      // Prévia da mensagem
-      const ultimaMensagem = tipo === "audio"
+      // Prévia da mensagem (aceita tipos em PT e EN)
+      const tipoLower = (tipo || "").toLowerCase();
+      const ultimaMensagem = tipoLower === "audio" || tipoLower === "ptt"
         ? "🎵 Áudio"
-        : tipo === "image"
+        : tipoLower === "image" || tipoLower === "imagem"
           ? "📷 Imagem"
-          : tipo === "document"
+          : tipoLower === "document" || tipoLower === "documento"
             ? "📄 Documento"
             : (mensagem && mensagem.length > 35
                 ? mensagem.substring(0, 35) + "..."
