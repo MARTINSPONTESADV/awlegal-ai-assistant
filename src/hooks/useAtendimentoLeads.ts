@@ -21,6 +21,8 @@ export type AtendimentoLead = {
   nome?: string | null;
   status_funil?: string;
   unread_count?: number;
+  foto_perfil_url?: string | null;
+  foto_perfil_atualizada_em?: string | null;
   historico_mensagens: Array<{
     whatsapp_id?: string;
     conteudo?: string | null;
@@ -164,6 +166,7 @@ async function fetchAtendimentoLeads(): Promise<AtendimentoLead[]> {
         nome_contato: prev.nome_contato || lead.nome_contato,
         nome: prev.nome || lead.nome,
         bot_ativo: prev.bot_ativo ?? lead.bot_ativo,
+        foto_perfil_url: prev.foto_perfil_url ?? lead.foto_perfil_url,
         historico_mensagens: hasNewMsgs ? lead.historico_mensagens : prev.historico_mensagens,
       });
     }

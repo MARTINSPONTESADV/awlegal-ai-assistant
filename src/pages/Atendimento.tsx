@@ -12,6 +12,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { ChatAvatar } from "@/components/atendimento/ChatAvatar";
 import {
   Bot, BotOff, Send, Phone, User, Circle,
   Search, Briefcase, Menu, Info, Pencil, Check, X, Building2, Zap,
@@ -381,6 +382,7 @@ export default function Atendimento() {
               nome_contato: isNomeValido ? newNome : c.nome_contato,
               arquivado: novoArquivado,
               bot_ativo: atualizado.bot_ativo ?? c.bot_ativo,
+              foto_perfil_url: atualizado.foto_perfil_url ?? c.foto_perfil_url,
             };
           })
         );
@@ -944,9 +946,7 @@ export default function Atendimento() {
               )}
             >
               <div className="relative shrink-0 pt-0.5">
-                <div className="h-10 w-10 rounded-full bg-violet-500/15 ring-1 ring-violet-400/20 flex items-center justify-center">
-                  <Phone className="h-4 w-4 text-violet-400" />
-                </div>
+                <ChatAvatar fotoUrl={chat.foto_perfil_url} size="md" />
                 {chat.bot_ativo && canal !== "martins_pontes" && (
                   <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-background" />
                 )}
@@ -1004,9 +1004,11 @@ export default function Atendimento() {
   const rightPanelContent = currentChat ? (
     <>
       <div className="text-center">
-        <div className="h-14 w-14 rounded-full bg-violet-500/15 ring-2 ring-violet-400/25 flex items-center justify-center mx-auto mb-2">
-          <Phone className="h-6 w-6 text-violet-400" />
-        </div>
+        <ChatAvatar
+          fotoUrl={(currentChat as any)?.foto_perfil_url}
+          size="lg"
+          className="mx-auto mb-2 ring-2 ring-violet-400/25"
+        />
         {editingName ? (
           <div className="flex items-center gap-1 justify-center mt-1">
             <Input
@@ -1262,9 +1264,7 @@ export default function Atendimento() {
                     <Menu className="h-4 w-4" />
                   </Button>
                 )}
-                <div className="h-8 w-8 rounded-full bg-violet-500/15 flex items-center justify-center shrink-0">
-                  <Phone className="h-3.5 w-3.5 text-violet-400" />
-                </div>
+                <ChatAvatar fotoUrl={(currentChat as any)?.foto_perfil_url} size="sm" className="shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground truncate">
                     {currentChat?.nomeExibicao || formatPhone(selectedChat)}
