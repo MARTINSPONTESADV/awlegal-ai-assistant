@@ -90,9 +90,13 @@ async function fetchAtendimentoLeads(): Promise<AtendimentoLead[]> {
   const enriched = data.map((lead: any) => {
     const normalNum = normalizeWaId(lead.whatsapp_numero || "");
     const pk = phoneKey(normalNum);
-    const leadCanal = lead.canal === "martins_pontes" ? "martins_pontes" : "null";
-    const preview =
-      previewMap.get(`${pk}||${leadCanal}`) ?? previewMap.get(`${pk}||resolva_ja`) ?? null;
+    // Lead do controle_bot = canal RJ por padrão. Se vier null (legacy) ou
+    // 'resolva_ja', prioriza msg RJ; mp só se explicitamente marcado.
+    // Fallback 'null' só se não houver nada tagueado (compat com histórico antigo).
+    const isMP = lead.canal === "martins_pontes";
+    const preview = isMP
+      ? previewMap.get(`${pk}||martins_pontes`) ?? previewMap.get(`${pk}||null`) ?? null
+      : previewMap.get(`${pk}||resolva_ja`) ?? previewMap.get(`${pk}||null`) ?? null;
     return { ...lead, whatsapp_numero: normalNum, historico_mensagens: preview ? [preview] : [] };
   });
 
