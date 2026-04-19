@@ -565,6 +565,15 @@ export default function ChatMediaRenderer({ conteudo, tipo_midia, media_url, out
           </a>
         );
       }
+      // Fallback: mensagens sem conteúdo (anexos legados salvos com tipo_midia=texto
+      // e conteudo=null antes do fix do workflow no 19/04) — mostra placeholder
+      if (!rawContent) {
+        return (
+          <p className="whitespace-pre-wrap leading-relaxed italic text-muted-foreground/80">
+            📎 Anexo recebido (conteúdo não disponível)
+          </p>
+        );
+      }
       return <p className="whitespace-pre-wrap leading-relaxed">{rawContent}</p>;
   }
 }
