@@ -61,12 +61,12 @@ export default function Diligencias() {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
           <h2 className="font-display text-3xl font-bold">Diligências</h2>
           <p className="text-sm text-muted-foreground mt-1">Controle de estagnação dos processos ativos</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setSortDesc(!sortDesc)} className="gap-2">
+        <Button variant="outline" size="sm" onClick={() => setSortDesc(!sortDesc)} className="gap-2 shrink-0 self-start sm:self-auto">
           <ArrowDownUp className="h-4 w-4" />
           {sortDesc ? "Mais estagnados primeiro" : "Menos estagnados primeiro"}
         </Button>

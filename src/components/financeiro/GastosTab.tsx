@@ -249,7 +249,7 @@ export default function GastosTab() {
           </div>
 
           <Select value={filterPeriodo} onValueChange={(v: any) => setFilterPeriodo(v)}>
-            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[160px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="mes">Mês atual</SelectItem>
               <SelectItem value="3m">Últimos 3 meses</SelectItem>
@@ -259,7 +259,7 @@ export default function GastosTab() {
           </Select>
 
           <Select value={filterCat} onValueChange={setFilterCat}>
-            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Categoria" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Categoria" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas categorias</SelectItem>
               {g.categorias.map(c => (
@@ -274,7 +274,7 @@ export default function GastosTab() {
           </Select>
 
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos status</SelectItem>
               <SelectItem value="pago">Pago</SelectItem>

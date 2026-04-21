@@ -129,12 +129,14 @@ export default function Financeiro() {
       <h2 className="font-display text-3xl font-bold mb-6">Financeiro</h2>
 
       <Tabs defaultValue="visao-geral" className="w-full">
-        <TabsList className="mb-6">
-          <TabsTrigger value="visao-geral">Visão Geral</TabsTrigger>
-          <TabsTrigger value="metricas">Métricas Avançadas</TabsTrigger>
-          <TabsTrigger value="marketing">Marketing</TabsTrigger>
-          <TabsTrigger value="gastos">Gastos</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto mb-6 -mx-3 px-3 sm:mx-0 sm:px-0">
+          <TabsList className="w-max">
+            <TabsTrigger value="visao-geral">Visão Geral</TabsTrigger>
+            <TabsTrigger value="metricas">Métricas Avançadas</TabsTrigger>
+            <TabsTrigger value="marketing">Marketing</TabsTrigger>
+            <TabsTrigger value="gastos">Gastos</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="visao-geral">
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-4">
