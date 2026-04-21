@@ -132,11 +132,13 @@ async function downloadFile(src: string, filename: string) {
 }
 
 // ══════════════════════════════════════════
-// COMPONENTE: Imagem Premium
+// COMPONENTE: Imagem Premium com Lightbox
 // ══════════════════════════════════════════
 function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -145,10 +147,19 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
     return () => clearTimeout(timeout);
   }, [loaded]);
 
-  // Fix for pure Base64 rendering (Problem 1)
+  // Fix for pure Base64 rendering
   const imageSrc = src.startsWith("data:image") || src.startsWith("http") || src.startsWith("blob:")
     ? src
     : `data:image/jpeg;base64,${src}`;
+
+  function openLightbox() {
+    setZoom(1);
+    setLightboxOpen(true);
+  }
+
+  function closeLightbox() {
+    setLightboxOpen(false);
+  }
 
   if (error) {
     return (
@@ -168,36 +179,98 @@ function ImageMessage({ src, outgoing }: { src: string; outgoing: boolean }) {
   }
 
   return (
-    <div className="relative group">
-      {!loaded && (
-        <div className={cn(
-          "w-[240px] h-[160px] rounded-lg animate-pulse",
-          outgoing ? "bg-violet-500/20" : "bg-white/[0.08]"
-        )} />
-      )}
-      <img
-        src={imageSrc}
-        alt="Imagem"
-        onLoad={() => setLoaded(true)}
-        onError={() => setError(true)}
-        onClick={() => downloadFile(imageSrc, "imagem.jpg")}
-        className={cn(
-          "rounded-lg max-w-[300px] max-h-[280px] object-cover cursor-pointer transition-all hover:brightness-110 hover:shadow-lg",
-          !loaded && "hidden"
+    <>
+      <div className="relative group">
+        {!loaded && (
+          <div className={cn(
+            "w-[240px] h-[160px] rounded-lg animate-pulse",
+            outgoing ? "bg-violet-500/20" : "bg-white/[0.08]"
+          )} />
         )}
-      />
-      {loaded && (
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <a href={imageSrc.startsWith("data:") ? "#" : imageSrc}
-            onClick={(e) => { e.preventDefault(); downloadFile(imageSrc, "imagem.jpg"); }}
-            rel="noopener noreferrer"
-            className="h-7 w-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors"
-          >
-            <ExternalLink className="h-3.5 w-3.5 text-white" />
-          </a>
-        </div>
-      )}
-    </div>
+        <img
+          src={imageSrc}
+          alt="Imagem"
+          onLoad={() => setLoaded(true)}
+          onError={() => setError(true)}
+          onClick={openLightbox}
+          className={cn(
+            "rounded-lg max-w-[300px] max-h-[280px] object-cover cursor-zoom-in transition-all hover:brightness-110 hover:shadow-lg",
+            !loaded && "hidden"
+          )}
+        />
+        {loaded && (
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); openLightbox(); }}
+              title="Visualizar"
+              className="h-7 w-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors"
+            >
+              <Eye className="h-3.5 w-3.5 text-white" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); downloadFile(imageSrc, "imagem.jpg"); }}
+              title="Baixar"
+              className="h-7 w-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors"
+            >
+              <Download className="h-3.5 w-3.5 text-white" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <Dialog open={lightboxOpen} onOpenChange={(open) => { if (!open) closeLightbox(); }}>
+        <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 flex flex-col gap-0 overflow-hidden bg-black/95 border-white/10">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 shrink-0 bg-black/80">
+            <span className="text-xs text-white/70">{Math.round(zoom * 100)}%</span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+                className="h-8 w-8 p-0 text-white hover:bg-white/10"
+              >−</Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setZoom(1)}
+                className="h-8 text-xs text-white hover:bg-white/10"
+              >1:1</Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setZoom((z) => Math.min(5, z + 0.25))}
+                className="h-8 w-8 p-0 text-white hover:bg-white/10"
+              >+</Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => downloadFile(imageSrc, "imagem.jpg")}
+                className="h-8 text-xs"
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                Baixar
+              </Button>
+              <button
+                onClick={closeLightbox}
+                className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto flex items-center justify-center p-4">
+            <img
+              src={imageSrc}
+              alt="Imagem ampliada"
+              style={{ transform: `scale(${zoom})`, transformOrigin: "center" }}
+              className="max-w-none transition-transform duration-150"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
