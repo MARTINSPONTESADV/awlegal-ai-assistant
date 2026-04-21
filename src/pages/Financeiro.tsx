@@ -16,6 +16,7 @@ import {
 import MetricasAvancadas from "@/components/MetricasAvancadas";
 import { useTotalCausa } from "@/hooks/useTotalCausa";
 import MarketingTab from "@/components/marketing/MarketingTab";
+import GastosTab from "@/components/financeiro/GastosTab";
 
 export default function Financeiro() {
   useEffect(() => { document.title = "Financeiro — AW LEGALTECH"; }, []);
@@ -132,6 +133,7 @@ export default function Financeiro() {
           <TabsTrigger value="visao-geral">Visão Geral</TabsTrigger>
           <TabsTrigger value="metricas">Métricas Avançadas</TabsTrigger>
           <TabsTrigger value="marketing">Marketing</TabsTrigger>
+          <TabsTrigger value="gastos">Gastos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="visao-geral">
@@ -202,6 +204,10 @@ export default function Financeiro() {
 
         <TabsContent value="marketing">
           <MarketingTab />
+        </TabsContent>
+
+        <TabsContent value="gastos">
+          <GastosTab />
         </TabsContent>
       </Tabs>
     </>
