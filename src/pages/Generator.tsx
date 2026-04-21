@@ -1,16 +1,16 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Download, FileText, Package, FileSignature, Scale, FileDown, Loader2 } from "lucide-react";
+import { Download, FileText, Package, FileSignature, Scale, FileDown, Loader2, Search, Home, X } from "lucide-react";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { saveAs } from "file-saver";
 import JSZip from "jszip";
+import { cn } from "@/lib/utils";
 
 interface Cliente {
   id: string;
@@ -27,6 +27,7 @@ interface Cliente {
 const FIXED_TEMPLATES = [
   { key: "contrato", label: "Contrato", icon: FileSignature, file: "/templates/CONTRATO_MARTINS_PONTES.docx" },
   { key: "procuracao", label: "Procuração e Declaração", icon: Scale, file: "/templates/PROCURACAO_DECLARACAO_HIPOSSUFICIENCIA.docx" },
+  { key: "declaracao_residencia", label: "Declaração de Residência", icon: Home, file: "/templates/DECLARACAO_RESIDENCIA.docx" },
 ];
 
 function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; ano: string }) {
@@ -62,55 +63,59 @@ function buildVariables(cliente: Cliente, extras: { dia: string; mes: string; an
   } as Record<string, string>;
 }
 
-/**
- * Build cleanup patterns ONLY for fields that are actually empty.
- * Each pattern targets the label phrase that surrounds the empty variable.
- * We use XML-aware matching: allow optional XML tags (<[^>]*>) between words.
- */
 function buildCleanupPatterns(cliente: Cliente): RegExp[] {
   const patterns: RegExp[] = [];
-  // X matches optional XML tags + whitespace between words in DOCX XML
   const X = "(?:<[^>]*>|\\s)*";
-
   if (!cliente.rg) {
-    // ", inscrito no RG de nº {empty} {empty_orgao}" — only match the label phrase, stop before real text
     patterns.push(new RegExp(`,?${X}inscrit[oa]${X}no${X}RG${X}(?:de${X})?n[ºo°]\\.?\\s*`, "gi"));
     patterns.push(new RegExp(`,?${X}portador(?:a)?${X}d[eo]${X}RG${X}(?:de${X})?n[ºo°]\\.?\\s*`, "gi"));
     patterns.push(new RegExp(`,?${X}portador(?:a)?${X}d[ao]${X}(?:c[ée]dula${X}de${X})?identidade${X}(?:RG${X})?n[ºo°]\\.?\\s*`, "gi"));
   }
-
   if (!cliente.cpf) {
     patterns.push(new RegExp(`,?${X}portador(?:a)?${X}d[eo]${X}CPF${X}(?:sob${X})?(?:o${X})?n[ºo°]\\.?\\s*`, "gi"));
     patterns.push(new RegExp(`,?${X}inscrit[oa]${X}no${X}CPF${X}(?:sob${X})?(?:o${X})?n[ºo°]\\.?\\s*`, "gi"));
   }
-
   if (!cliente.endereco_cep) {
-    // Match ", residente e domiciliado(a) na Rua" + trailing whitespace only (not the next phrase)
     patterns.push(new RegExp(`,?${X}residente${X}(?:e${X}domiciliad[oa]${X})?(?:n[oa]${X})?(?:Rua|Av\\.?|Avenida)?\\s*`, "gi"));
     patterns.push(new RegExp(`,?${X}com${X}endere[çc]o${X}(?:n[ao]?|em)\\s*`, "gi"));
   }
-
   if (!cliente.orgao_expedidor && !cliente.rg) {
     patterns.push(new RegExp(`,?${X}(?:expedid[oa]${X}pel[oa]|[óo]rg[aã]o${X}expedidor${X}:?)\\s*`, "gi"));
   }
-
   return patterns;
 }
 
-/**
- * Clean orphan phrases from DOCX XML only for fields that are empty.
- * Also fix double commas and comma-before-period.
- */
 function cleanOrphanPhrases(xml: string, cliente: Cliente): string {
   const patterns = buildCleanupPatterns(cliente);
   let result = xml;
-  for (const p of patterns) {
-    result = result.replace(p, "");
-  }
-  // Fix punctuation artifacts
-  result = result.replace(/,(\s*(?:<[^>]*>\s*)*),/g, ","); // double commas (with XML between)
-  result = result.replace(/,(\s*(?:<[^>]*>\s*)*)\./g, "."); // comma before period
+  for (const p of patterns) result = result.replace(p, "");
+  result = result.replace(/,(\s*(?:<[^>]*>\s*)*),/g, ",");
+  result = result.replace(/,(\s*(?:<[^>]*>\s*)*)\./g, ".");
   return result.replace(/  +/g, " ");
+}
+
+/**
+ * Monta a qualificação completa do cliente (nome + dados) pra substituir
+ * placeholders "DADOS DO CLIENTE" em templates como Declaração de Residência.
+ * Campos ausentes são pulados silenciosamente.
+ */
+function buildQualificacao(c: Cliente): string {
+  if (!c.nome_completo) return "";
+  const parts: string[] = [c.nome_completo.toUpperCase()];
+  if (c.nacionalidade) parts.push(c.nacionalidade.toLowerCase());
+  if (c.estado_civil) parts.push(c.estado_civil.toLowerCase());
+  if (c.profissao) parts.push(c.profissao.toLowerCase());
+  if (c.rg) {
+    const orgao = c.orgao_expedidor ? ` ${c.orgao_expedidor}` : "";
+    parts.push(`portador do RG n° ${c.rg}${orgao}`);
+  }
+  if (c.cpf) parts.push(`inscrito no CPF sob o n° ${c.cpf}`);
+  if (c.endereco_cep) parts.push(`residente e domiciliado no endereço ${c.endereco_cep}`);
+  return parts.join(", ");
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 async function fetchTemplate(url: string): Promise<ArrayBuffer> {
@@ -119,13 +124,6 @@ async function fetchTemplate(url: string): Promise<ArrayBuffer> {
   return res.arrayBuffer();
 }
 
-/**
- * Process the original .docx template:
- * 1. Open with docxtemplater
- * 2. Replace variables with client data
- * 3. Clean orphan phrases from the XML
- * 4. Return the processed blob (preserving ALL original formatting)
- */
 function processTemplate(arrayBuffer: ArrayBuffer, cliente: Cliente, extras: { dia: string; mes: string; ano: string }): Blob {
   const variables = buildVariables(cliente, extras);
   const zip = new PizZip(arrayBuffer);
@@ -137,13 +135,17 @@ function processTemplate(arrayBuffer: ArrayBuffer, cliente: Cliente, extras: { d
   });
   doc.render(variables);
 
-  // Post-process XML to clean orphan phrases
   const outputZip = doc.getZip();
+  const qualificacao = escapeXml(buildQualificacao(cliente));
   const files = ["word/document.xml", "word/header1.xml", "word/header2.xml", "word/header3.xml", "word/footer1.xml", "word/footer2.xml", "word/footer3.xml"];
   for (const f of files) {
     const entry = outputZip.file(f);
     if (entry) {
-      outputZip.file(f, cleanOrphanPhrases(entry.asText(), cliente));
+      let xml = entry.asText();
+      // Substituir placeholder "DADOS DO CLIENTE" pela qualificação completa
+      if (qualificacao) xml = xml.split("DADOS DO CLIENTE").join(qualificacao);
+      xml = cleanOrphanPhrases(xml, cliente);
+      outputZip.file(f, xml);
     }
   }
 
@@ -154,6 +156,7 @@ export default function Generator() {
   useEffect(() => { document.title = "Gerador Docs — AW LEGALTECH"; }, []);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<string>("");
+  const [search, setSearch] = useState("");
   const [dia, setDia] = useState("");
   const [mes, setMes] = useState("");
   const [ano, setAno] = useState("");
@@ -173,6 +176,29 @@ export default function Generator() {
 
   const emptyCliente: Cliente = { id: "", nome_completo: "", nacionalidade: null, estado_civil: null, profissao: null, rg: null, orgao_expedidor: null, cpf: null, endereco_cep: null };
   const getCliente = () => (selectedCliente ? clientes.find((c) => c.id === selectedCliente) : null) ?? emptyCliente;
+  const clienteInfo = clientes.find((c) => c.id === selectedCliente);
+
+  // Busca incremental: filtra por nome ou CPF (igual /clientes)
+  const filteredClientes = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return clientes.slice(0, 15);
+    const digits = q.replace(/\D/g, "");
+    return clientes.filter(c => {
+      const nameMatch = c.nome_completo.toLowerCase().includes(q);
+      const cpfMatch = digits.length >= 3 && (c.cpf ?? "").replace(/\D/g, "").includes(digits);
+      return nameMatch || cpfMatch;
+    }).slice(0, 15);
+  }, [clientes, search]);
+
+  const selectCliente = (id: string) => {
+    setSelectedCliente(id);
+    setSearch("");
+  };
+
+  const clearCliente = () => {
+    setSelectedCliente("");
+    setSearch("");
+  };
 
   const generateSingle = async (templateKey: string) => {
     const template = FIXED_TEMPLATES.find((t) => t.key === templateKey);
@@ -250,8 +276,6 @@ export default function Generator() {
     saveAs(content, `${safeName}_kit.zip`);
   };
 
-  const clienteInfo = clientes.find((c) => c.id === selectedCliente);
-
   return (
     <>
       <h2 className="font-display text-3xl font-bold mb-6">Gerador de Documentos</h2>
@@ -262,12 +286,49 @@ export default function Generator() {
             <CardContent className="space-y-4">
               <div>
                 <Label>Cliente</Label>
-                <Select value={selectedCliente} onValueChange={setSelectedCliente}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um cliente (opcional)..." /></SelectTrigger>
-                  <SelectContent>
-                    {clientes.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome_completo}</SelectItem>))}
-                  </SelectContent>
-                </Select>
+                {clienteInfo ? (
+                  <div className="mt-1 flex items-center justify-between rounded-lg border border-border bg-muted/50 p-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{clienteInfo.nome_completo}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{clienteInfo.cpf || "—"}</p>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={clearCliente} className="shrink-0">
+                      <X className="h-4 w-4 mr-1" /> Trocar
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative mt-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar por nome ou CPF..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="pl-10"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border/50">
+                      {filteredClientes.length === 0 ? (
+                        <p className="p-4 text-center text-xs text-muted-foreground">Nenhum cliente encontrado.</p>
+                      ) : filteredClientes.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => selectCliente(c.id)}
+                          className={cn(
+                            "w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center justify-between gap-2"
+                          )}
+                        >
+                          <span className="font-medium text-sm truncate">{c.nome_completo}</span>
+                          {c.cpf && <span className="text-[11px] text-muted-foreground font-mono shrink-0">{c.cpf}</span>}
+                        </button>
+                      ))}
+                    </div>
+                    {!search && clientes.length > 15 && (
+                      <p className="text-[11px] text-muted-foreground mt-1.5">Exibindo 15 de {clientes.length}. Digite pra filtrar.</p>
+                    )}
+                  </>
+                )}
               </div>
 
               {clienteInfo && (
@@ -287,16 +348,16 @@ export default function Generator() {
                 <div><Label>Ano</Label><Input value={ano} onChange={(e) => setAno(e.target.value)} className="mt-1" /></div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
                 {FIXED_TEMPLATES.map((t) => (
-                  <Button key={t.key} variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => generateSingle(t.key)} disabled={generating}>
+                  <Button key={t.key} variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => generateSingle(t.key)} disabled={generating || !selectedCliente}>
                     <t.icon className="h-6 w-6" />
-                    <span className="text-xs font-medium">Gerar {t.label}</span>
+                    <span className="text-xs font-medium text-center leading-tight">Gerar {t.label}</span>
                   </Button>
                 ))}
               </div>
 
-              <Button className="w-full" onClick={generateAll} disabled={generating}>
+              <Button className="w-full" onClick={generateAll} disabled={generating || !selectedCliente}>
                 <Package className="h-4 w-4 mr-2" />
                 {generating ? "Gerando..." : "Gerar Todos os Documentos"}
               </Button>
