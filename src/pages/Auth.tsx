@@ -71,7 +71,7 @@ function FloatingInput({
 }
 
 export default function Auth() {
-  useEffect(() => { document.title = "AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "AW ECO"; }, []);
   const [loading, setLoading] = useState(false);
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
@@ -200,7 +200,7 @@ export default function Auth() {
             <span style={{background:'linear-gradient(135deg, hsl(270,100%,75%), hsl(190,100%,65%))', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>Unificada.</span>
           </h1>
           <p style={{fontFamily:'Lato,sans-serif'}} className="mt-6 max-w-md text-base leading-relaxed text-white/70">
-            A tradicao e excelencia de Martins Pontes Advocacia, potencializadas pela tecnologia do AW Legal System.
+            A tradicao e excelencia de Martins Pontes Advocacia, potencializadas pela tecnologia do AW ECO.
           </p>
         </div>
       </div>

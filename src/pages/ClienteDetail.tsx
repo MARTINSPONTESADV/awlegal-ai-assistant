@@ -20,7 +20,7 @@ interface Cliente { id: string; nome_completo: string; nacionalidade: string | n
 interface Processo { id: string; numero_processo: string | null; numero_cnj: string | null; status: string; area_atuacao: string | null; created_at: string; }
 
 export default function ClienteDetail() {
-  useEffect(() => { document.title = "Cliente — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Cliente — AW ECO"; }, []);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();

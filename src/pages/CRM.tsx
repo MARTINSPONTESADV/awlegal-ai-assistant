@@ -80,7 +80,7 @@ function calcStageMetrics(history: FunilHistory[]): Record<string, number | null
 }
 
 export default function CRM() {
-  useEffect(() => { document.title = "Funil de Vendas — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Funil de Vendas — AW ECO"; }, []);
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [movingId, setMovingId] = useState<string | null>(null);

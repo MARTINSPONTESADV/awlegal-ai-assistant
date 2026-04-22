@@ -16,7 +16,7 @@ const tables = [
 const auxTables = ["aux_comarcas", "aux_fases", "aux_assuntos"] as const;
 
 export default function Exportar() {
-  useEffect(() => { document.title = "Exportar — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Exportar — AW ECO"; }, []);
   const [loading, setLoading] = useState<string | null>(null);
 
   const exportTable = async (table: string) => {

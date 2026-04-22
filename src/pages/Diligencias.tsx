@@ -24,7 +24,7 @@ function getTrafficLight(dias: number): { color: string; label: string; badgeCla
 }
 
 export default function Diligencias() {
-  useEffect(() => { document.title = "Diligências — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Diligências — AW ECO"; }, []);
   const [processos, setProcessos] = useState<ProcessoDiligencia[]>([]);
   const [sortDesc, setSortDesc] = useState(true);
   const navigate = useNavigate();

@@ -47,7 +47,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; co
 };
 
 export default function Clientes() {
-  useEffect(() => { document.title = "Clientes — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Clientes — AW ECO"; }, []);
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [clientes, setClientes] = useState<Cliente[]>([]);

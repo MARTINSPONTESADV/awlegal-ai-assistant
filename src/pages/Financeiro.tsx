@@ -19,7 +19,7 @@ import MarketingTab from "@/components/marketing/MarketingTab";
 import GastosTab from "@/components/financeiro/GastosTab";
 
 export default function Financeiro() {
-  useEffect(() => { document.title = "Financeiro — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Financeiro — AW ECO"; }, []);
   const navigate = useNavigate();
   const [processos, setProcessos] = useState<ProcessoFinanceiro[]>([]);
   const [clientes, setClientes] = useState<Record<string, string>>({});

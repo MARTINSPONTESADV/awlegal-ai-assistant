@@ -23,7 +23,7 @@ function sanitizeFileName(name: string): string {
 }
 
 export default function Admin() {
-  useEffect(() => { document.title = "Administração — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Administração — AW ECO"; }, []);
   const { isAdmin, user } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [roles, setRoles] = useState<UserRole[]>([]);

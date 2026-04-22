@@ -29,7 +29,7 @@ const FILTER_LABELS: Record<string, string> = {
 };
 
 export default function Processos() {
-  useEffect(() => { document.title = "Processos — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Processos — AW ECO"; }, []);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin } = useAuth();

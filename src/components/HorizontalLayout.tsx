@@ -138,7 +138,7 @@ export function HorizontalLayout() {
             onClick={() => navigate("/dashboard")}
           >
             <span className="hidden sm:inline">MARTINS PONTES ADVOCACIA </span>
-            <span className="text-purple-700 font-black">AW LEGAL</span>
+            <span className="text-purple-700 font-black">AW ECO</span>
           </h1>
           <GlobalSearch />
           <div className="flex items-center gap-2 md:gap-3">

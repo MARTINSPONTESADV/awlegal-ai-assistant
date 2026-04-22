@@ -17,7 +17,7 @@ interface ProcessoRow { numero_processo: string | null; numero_cnj: string | nul
 const STATUS_OPTIONS = ["Em andamento", "Suspenso", "Encerrado", "Arquivado"];
 
 export default function Relatorios() {
-  useEffect(() => { document.title = "Relatórios — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Relatórios — AW ECO"; }, []);
   const [responsavel, setResponsavel] = useState("");
   const [statusProcessual, setStatusProcessual] = useState("");
   const [comarca, setComarca] = useState("");

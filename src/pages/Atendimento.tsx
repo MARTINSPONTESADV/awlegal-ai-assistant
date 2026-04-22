@@ -105,7 +105,7 @@ interface Mensagem {
 }
 
 export default function Atendimento() {
-  useEffect(() => { document.title = "Atendimento — AW LEGALTECH"; }, []);
+  useEffect(() => { document.title = "Atendimento — AW ECO"; }, []);
   const { toast } = useToast();
   const isMobile = useIsMobile();
 

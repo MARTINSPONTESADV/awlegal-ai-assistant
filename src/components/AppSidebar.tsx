@@ -131,8 +131,8 @@ export function AppSidebar() {
         </div>
         {!collapsed && (
           <div className="flex flex-col justify-center">
-            <span className="font-bold text-sm tracking-tight text-foreground leading-none">AW LEGAL</span>
-            <span className="text-[9px] text-cyan-400/70 uppercase tracking-[0.15em] font-mono leading-none mt-1">Legaltech</span>
+            <span className="font-bold text-sm tracking-tight text-foreground leading-none">AW ECO</span>
+            <span className="text-[9px] text-cyan-400/70 uppercase tracking-[0.15em] font-mono leading-none mt-1">Ecossistema</span>
           </div>
         )}
       </div>
@@ -180,7 +180,7 @@ export function AppSidebar() {
           <div className="flex items-center gap-2">
             <Zap className="h-3 w-3 text-cyan-400/60 shrink-0" />
             <p className="text-[9px] text-muted-foreground font-mono tracking-widest uppercase">
-              AW Legaltech v2.0
+              AW ECO v2.0
             </p>
           </div>
         ) : (
