@@ -14,7 +14,13 @@
     "test:ui": "playwright test --ui",
     "test:report": "playwright show-report",
     "test:unit": "vitest run",
-    "test:unit:watch": "vitest"
+    "test:unit:watch": "vitest",
+    "sync:finder:pull": "node scripts/sync/sync-finder.mjs pull",
+    "sync:finder:push": "node scripts/sync/sync-finder.mjs push",
+    "sync:writer:pull": "node scripts/sync/sync-writer.mjs pull",
+    "sync:writer:push": "node scripts/sync/sync-writer.mjs push",
+    "sync:system:pull": "node scripts/sync/sync-system.mjs pull",
+    "sync:system:push": "node scripts/sync/sync-system.mjs push"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
