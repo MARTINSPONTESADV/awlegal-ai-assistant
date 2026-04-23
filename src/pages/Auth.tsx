@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { appConfig } from "@/config/app-config";
 import { Eye, EyeOff, ArrowRight } from "lucide-react";
 
 const fadeUp = {
@@ -71,7 +72,7 @@ function FloatingInput({
 }
 
 export default function Auth() {
-  useEffect(() => { document.title = "AW ECO"; }, []);
+  useEffect(() => { document.title = appConfig.name; }, []);
   const [loading, setLoading] = useState(false);
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
@@ -178,7 +179,7 @@ export default function Auth() {
           </motion.div>
 
           <motion.div custom={7} variants={fadeUp} className="mt-16">
-            <p className="text-[11px] text-muted-foreground/50 text-center">© 2026 AW LEGALTECH · Todos os direitos reservados</p>
+            <p className="text-[11px] text-muted-foreground/50 text-center">© {appConfig.copyrightYear} {appConfig.officeName} · Todos os direitos reservados</p>
           </motion.div>
         </motion.div>
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { SpotlightCard } from "@/components/SpotlightCard";
@@ -7,6 +7,7 @@ import {
   Briefcase, Users, MessageSquare, FileSearch,
   ArrowRight,
 } from "lucide-react";
+import { appConfig, type SubsystemKey } from "@/config/app-config";
 
 interface Stat {
   label: string;
@@ -14,7 +15,7 @@ interface Stat {
 }
 
 interface Cube {
-  key: string;
+  key: SubsystemKey;
   title: string;
   subtitle: string;
   description: string;
@@ -26,7 +27,7 @@ interface Cube {
 }
 
 export default function HomeHub() {
-  useEffect(() => { document.title = "AW ECO — Ecossistema"; }, []);
+  useEffect(() => { document.title = `${appConfig.name} — ${appConfig.tagline}`; }, []);
   const navigate = useNavigate();
 
   const [counts, setCounts] = useState({
@@ -49,9 +50,9 @@ export default function HomeHub() {
     })();
   }, []);
 
-  const cubes: Cube[] = [
+  const allCubes: Cube[] = [
     {
-      key: "sistema",
+      key: "system",
       title: "AW SYSTEM",
       subtitle: "Hub Jurídico",
       description: "Clientes, processos, agenda, publicações, diligências, relatórios e geração de documentos.",
@@ -78,7 +79,7 @@ export default function HomeHub() {
       target: "/crm",
     },
     {
-      key: "pre-protocolo",
+      key: "pre",
       title: "AW PRÉ-PROTOCOLO",
       subtitle: "Automação jurídica",
       description: "AW FINDER (auditoria bancária via OCR) + AW WRITER (confecção automática de iniciais).",
@@ -105,18 +106,18 @@ export default function HomeHub() {
     },
   ];
 
-  const miniIcons: Record<string, any> = {
-    sistema: Briefcase,
-    crm: MessageSquare,
-    "pre-protocolo": FileSearch,
-    fin: Users,
-  };
+  // Filtra só os cubos habilitados pelo tenant via VITE_FEATURES
+  const cubes = useMemo(
+    () => allCubes.filter(c => appConfig.features.includes(c.key)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [counts]
+  );
 
   return (
     <div className="min-h-full flex flex-col w-full max-w-[1600px] mx-auto">
       <div className="mb-8">
         <h1 className="font-display text-4xl lg:text-5xl font-bold tracking-tight">
-          AW ECO <span className="text-violet-400/60 text-2xl font-mono align-middle">// ecossistema</span>
+          {appConfig.name} <span className="text-violet-400/60 text-2xl font-mono align-middle">// {appConfig.tagline.toLowerCase()}</span>
         </h1>
         <p className="text-muted-foreground mt-2">
           Escolha um sub-sistema para começar.
@@ -182,7 +183,7 @@ export default function HomeHub() {
       </div>
 
       <p className="text-xs text-muted-foreground/40 mt-8 font-mono">
-        AW ECO v2.0 · Powered by AW LEGALTECH
+        {appConfig.name} v2.0 · Powered by {appConfig.officeName}
       </p>
     </div>
   );

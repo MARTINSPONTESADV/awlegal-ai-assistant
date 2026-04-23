@@ -2,6 +2,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMemo } from "react";
+import { appConfig, isFeatureEnabled } from "@/config/app-config";
 import {
   LayoutDashboard, Users, Briefcase, Newspaper, CalendarDays,
   MessageSquare, BarChart3, FileText, DollarSign, Search,
@@ -107,6 +108,15 @@ function detectSubsystem(pathname: string): SubsystemId | null {
   return "system";
 }
 
+/** Filtra lista de sub-sistemas pelo que está habilitado no tenant */
+function filterByFeatures<T extends { [K in SubsystemId]?: unknown }>(map: T): Partial<T> {
+  const out: Partial<T> = {};
+  (Object.keys(map) as SubsystemId[]).forEach((k) => {
+    if (isFeatureEnabled(k)) out[k] = map[k];
+  });
+  return out;
+}
+
 // ────────────────────────────────────────────────────────────
 // Section component (vertical list)
 // ────────────────────────────────────────────────────────────
@@ -167,7 +177,8 @@ function SidebarSection({
 function SubsystemSwitcher({ current, collapsed }: { current: SubsystemId | null; collapsed: boolean }) {
   const navigate = useNavigate();
   const others = (Object.entries(SUBSYSTEMS) as [SubsystemId, typeof SUBSYSTEMS.system][])
-    .filter(([id]) => id !== current);
+    .filter(([id]) => id !== current && isFeatureEnabled(id));
+  if (others.length === 0) return null;
 
   return (
     <SidebarGroup>
@@ -217,7 +228,12 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const currentSubsystem = useMemo(() => detectSubsystem(location.pathname), [location.pathname]);
+  const currentSubsystem = useMemo(() => {
+    const detected = detectSubsystem(location.pathname);
+    // Se o sub-sistema detectado está desabilitado pelo tenant, não mostra a seção
+    if (detected && !isFeatureEnabled(detected)) return null;
+    return detected;
+  }, [location.pathname]);
   const currentDef = currentSubsystem ? SUBSYSTEMS[currentSubsystem] : null;
 
   return (
@@ -232,8 +248,8 @@ export function AppSidebar() {
         </div>
         {!collapsed && (
           <div className="flex flex-col justify-center text-left">
-            <span className="font-bold text-sm tracking-tight text-foreground leading-none">AW ECO</span>
-            <span className="text-[9px] text-cyan-400/70 uppercase tracking-[0.15em] font-mono leading-none mt-1">Ecossistema</span>
+            <span className="font-bold text-sm tracking-tight text-foreground leading-none">{appConfig.name}</span>
+            <span className="text-[9px] text-cyan-400/70 uppercase tracking-[0.15em] font-mono leading-none mt-1">{appConfig.tagline}</span>
           </div>
         )}
       </button>
@@ -301,7 +317,7 @@ export function AppSidebar() {
           <div className="flex items-center gap-2">
             <Zap className="h-3 w-3 text-cyan-400/60 shrink-0" />
             <p className="text-[9px] text-muted-foreground font-mono tracking-widest uppercase">
-              AW ECO v2.0
+              {appConfig.name} v2.0
             </p>
           </div>
         ) : (
