@@ -49,5 +49,5 @@ export default function Index() {
     );
   }
 
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to="/home" replace />;
 }

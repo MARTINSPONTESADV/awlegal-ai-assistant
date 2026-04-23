@@ -25,6 +25,10 @@ import Exportar from "./pages/Exportar";
 import Atendimento from "./pages/Atendimento";
 import CRM from "./pages/CRM";
 import NotFound from "./pages/NotFound";
+import HomeHub from "./pages/HomeHub";
+import PreProtocolo from "./pages/PreProtocolo";
+import WriterApp from "./pages/apps/Writer";
+import FinderPage from "./pages/apps/Finder";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +64,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route element={<SidebarLayout />}>
+                <Route path="/home" element={<HomeHub />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/clientes" element={<Clientes />} />
                 <Route path="/clientes/:id" element={<ClienteDetail />} />
@@ -68,6 +73,7 @@ const App = () => (
                 <Route path="/agenda" element={<Agenda />} />
                 <Route path="/relatorios" element={<Relatorios />} />
                 <Route path="/financeiro" element={<Financeiro />} />
+                <Route path="/fin" element={<Financeiro />} />
                 <Route path="/publicacoes" element={<Publicacoes />} />
                 <Route path="/diligencias" element={<Diligencias />} />
                 <Route path="/generator" element={<Generator />} />
@@ -75,6 +81,10 @@ const App = () => (
                 <Route path="/exportar" element={<Exportar />} />
                 <Route path="/atendimento" element={<Atendimento />} />
                 <Route path="/crm" element={<CRM />} />
+                <Route path="/sistema" element={<Dashboard />} />
+                <Route path="/pre-protocolo" element={<PreProtocolo />} />
+                <Route path="/pre-protocolo/writer" element={<WriterApp />} />
+                <Route path="/pre-protocolo/finder" element={<FinderPage />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

@@ -51,7 +51,7 @@ export function SidebarLayout() {
           {/* Page content – overflow-y-auto for normal pages (Dashboard, Financeiro, etc.)
               relative allows Atendimento to position absolute and escape the scroll. */}
           <main className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
-            <div className={`flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden ${isFullBleed ? "" : "px-3 py-3 sm:px-6 sm:py-6"}`}>
+            <div className={`flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden scrollbar-thin ${isFullBleed ? "" : "px-3 py-3 sm:px-6 sm:py-6"}`}>
               <Outlet />
             </div>
           </main>

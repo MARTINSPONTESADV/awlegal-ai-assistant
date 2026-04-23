@@ -1,11 +1,12 @@
 import { useAuth } from "@/hooks/useAuth";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useMemo } from "react";
 import {
   LayoutDashboard, Users, Briefcase, Newspaper, CalendarDays,
   MessageSquare, BarChart3, FileText, DollarSign, Search,
-  Shield, DatabaseBackup, Settings, Scale, Headphones, TrendingUp,
-  Zap,
+  Shield, DatabaseBackup, Scale, TrendingUp, Zap,
+  FileSearch, PenLine, ArrowRight,
 } from "lucide-react";
 import {
   Sidebar,
@@ -19,51 +20,104 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
-const hubJuridico = [
-  { title: "Dashboard",    url: "/dashboard",   icon: LayoutDashboard },
-  { title: "Clientes",     url: "/clientes",    icon: Users },
-  { title: "Processos",    url: "/processos",   icon: Briefcase },
-  { title: "Publicações",  url: "/publicacoes", icon: Newspaper },
-  { title: "Agenda",       url: "/agenda",      icon: CalendarDays },
-  { title: "Diligências",  url: "/diligencias", icon: Search },
-  { title: "Relatórios",   url: "/relatorios",  icon: BarChart3 },
-  { title: "Gerador Docs", url: "/generator",   icon: FileText },
-];
+// ────────────────────────────────────────────────────────────
+// Sub-systems + items
+// ────────────────────────────────────────────────────────────
+type SubsystemId = "system" | "crm" | "pre" | "fin";
 
-const centralResolvaJa = [
-  { title: "Atendimento", url: "/atendimento", icon: MessageSquare },
-];
+interface NavItem { title: string; url: string; icon: any }
 
-const comercialCrm = [
-  { title: "Funil de Vendas", url: "/crm",       icon: TrendingUp },
-  { title: "Financeiro",      url: "/financeiro", icon: DollarSign },
-];
+const SUBSYSTEMS: Record<SubsystemId, {
+  label: string;
+  color: SectionColor;
+  home: string; // rota principal
+  items: NavItem[];
+}> = {
+  system: {
+    label: "AW System",
+    color: "blue",
+    home: "/dashboard",
+    items: [
+      { title: "Dashboard",    url: "/dashboard",   icon: LayoutDashboard },
+      { title: "Clientes",     url: "/clientes",    icon: Users },
+      { title: "Processos",    url: "/processos",   icon: Briefcase },
+      { title: "Publicações",  url: "/publicacoes", icon: Newspaper },
+      { title: "Agenda",       url: "/agenda",      icon: CalendarDays },
+      { title: "Diligências",  url: "/diligencias", icon: Search },
+      { title: "Relatórios",   url: "/relatorios",  icon: BarChart3 },
+      { title: "Gerador Docs", url: "/generator",   icon: FileText },
+    ],
+  },
+  crm: {
+    label: "AW CRM",
+    color: "purple",
+    home: "/atendimento",
+    items: [
+      { title: "Atendimento",     url: "/atendimento", icon: MessageSquare },
+      { title: "Funil de Vendas", url: "/crm",        icon: TrendingUp },
+    ],
+  },
+  pre: {
+    label: "AW Pré-Protocolo",
+    color: "green",
+    home: "/pre-protocolo",
+    items: [
+      { title: "AW Finder", url: "/pre-protocolo/finder", icon: FileSearch },
+      { title: "AW Writer", url: "/pre-protocolo/writer", icon: PenLine },
+    ],
+  },
+  fin: {
+    label: "AW Fin",
+    color: "orange",
+    home: "/financeiro",
+    items: [
+      { title: "Financeiro", url: "/financeiro", icon: DollarSign },
+    ],
+  },
+};
 
-const configItems = [
+const configItems: NavItem[] = [
   { title: "Exportar", url: "/exportar", icon: DatabaseBackup },
 ];
 
-type SectionColor = "blue" | "green" | "purple" | "muted";
+// ────────────────────────────────────────────────────────────
+// Color tokens
+// ────────────────────────────────────────────────────────────
+type SectionColor = "blue" | "green" | "purple" | "orange" | "muted";
 
-/** Tailwind CSS colour tokens per section */
-const colorMap: Record<SectionColor, { label: string; active: string; dot: string }> = {
-  blue:   { label: "text-cyan-400",    active: "bg-cyan-500/15 text-cyan-300",    dot: "bg-cyan-400" },
-  green:  { label: "text-emerald-400", active: "bg-emerald-500/15 text-emerald-300", dot: "bg-emerald-400" },
-  purple: { label: "text-violet-400",  active: "bg-violet-500/15 text-violet-300",  dot: "bg-violet-400" },
-  muted:  { label: "text-muted-foreground", active: "bg-muted text-foreground",  dot: "bg-slate-500" },
+const colorMap: Record<SectionColor, { label: string; active: string; dot: string; switcher: string }> = {
+  blue:   { label: "text-cyan-400",    active: "bg-cyan-500/15 text-cyan-300",       dot: "bg-cyan-400",    switcher: "hover:bg-cyan-500/10 hover:border-cyan-500/30 hover:text-cyan-300" },
+  green:  { label: "text-emerald-400", active: "bg-emerald-500/15 text-emerald-300", dot: "bg-emerald-400", switcher: "hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-300" },
+  purple: { label: "text-violet-400",  active: "bg-violet-500/15 text-violet-300",   dot: "bg-violet-400",  switcher: "hover:bg-violet-500/10 hover:border-violet-500/30 hover:text-violet-300" },
+  orange: { label: "text-amber-400",   active: "bg-amber-500/15 text-amber-300",     dot: "bg-amber-400",   switcher: "hover:bg-amber-500/10 hover:border-amber-500/30 hover:text-amber-300" },
+  muted:  { label: "text-muted-foreground", active: "bg-muted text-foreground",      dot: "bg-slate-500",   switcher: "hover:bg-white/[0.05]" },
 };
 
+// ────────────────────────────────────────────────────────────
+// Route → subsystem resolver
+// ────────────────────────────────────────────────────────────
+function detectSubsystem(pathname: string): SubsystemId | null {
+  if (pathname.startsWith("/pre-protocolo")) return "pre";
+  if (pathname.startsWith("/financeiro") || pathname.startsWith("/fin")) return "fin";
+  if (pathname.startsWith("/atendimento") || pathname.startsWith("/crm")) return "crm";
+  if (pathname.startsWith("/home")) return null;
+  // default subsystem for /dashboard, /clientes, /processos, /agenda, /publicacoes, /diligencias, /relatorios, /generator, /sistema
+  return "system";
+}
+
+// ────────────────────────────────────────────────────────────
+// Section component (vertical list)
+// ────────────────────────────────────────────────────────────
 function SidebarSection({
   label,
-  emoji,
   items,
   color,
   collapsed,
 }: {
   label: string;
-  emoji: string;
-  items: typeof hubJuridico;
+  items: NavItem[];
   color: SectionColor;
   collapsed: boolean;
 }) {
@@ -73,10 +127,7 @@ function SidebarSection({
   return (
     <SidebarGroup>
       {!collapsed && (
-        <SidebarGroupLabel
-          className={`text-[9px] uppercase tracking-[0.18em] font-semibold ${labelCls} opacity-70 px-3 pt-3 pb-1 flex items-center gap-1.5`}
-        >
-          {/* Tiny colour dot */}
+        <SidebarGroupLabel className={`text-[9px] uppercase tracking-[0.18em] font-semibold ${labelCls} opacity-70 px-3 pt-3 pb-1 flex items-center gap-1.5`}>
           <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotCls} opacity-80`} />
           {label}
         </SidebarGroupLabel>
@@ -84,9 +135,7 @@ function SidebarSection({
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
-            const isActive =
-              location.pathname === item.url ||
-              location.pathname.startsWith(item.url + "/");
+            const isActive = location.pathname === item.url || location.pathname.startsWith(item.url + "/");
             return (
               <SidebarMenuItem key={item.url}>
                 <SidebarMenuButton
@@ -112,37 +161,109 @@ function SidebarSection({
   );
 }
 
+// ────────────────────────────────────────────────────────────
+// Subsystem switcher (other systems list)
+// ────────────────────────────────────────────────────────────
+function SubsystemSwitcher({ current, collapsed }: { current: SubsystemId | null; collapsed: boolean }) {
+  const navigate = useNavigate();
+  const others = (Object.entries(SUBSYSTEMS) as [SubsystemId, typeof SUBSYSTEMS.system][])
+    .filter(([id]) => id !== current);
+
+  return (
+    <SidebarGroup>
+      {!collapsed && (
+        <SidebarGroupLabel className="text-[9px] uppercase tracking-[0.18em] font-semibold text-muted-foreground/70 px-3 pt-3 pb-1.5">
+          Outros sistemas
+        </SidebarGroupLabel>
+      )}
+      <SidebarGroupContent>
+        <div className={collapsed ? "flex flex-col gap-1" : "flex flex-col gap-1.5 px-1"}>
+          {others.map(([id, def]) => {
+            const tk = colorMap[def.color];
+            return (
+              <button
+                key={id}
+                onClick={() => navigate(def.home)}
+                className={cn(
+                  "group flex items-center gap-2 rounded-xl transition-all",
+                  collapsed ? "justify-center h-9 mx-auto" : "px-3 py-2 border border-white/[0.05] bg-white/[0.02] hover:scale-[1.02]",
+                  !collapsed && tk.switcher,
+                )}
+                title={def.label}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", tk.dot)} />
+                {!collapsed && (
+                  <>
+                    <span className="text-xs font-semibold tracking-tight flex-1 text-left">{def.label}</span>
+                    <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Main sidebar
+// ────────────────────────────────────────────────────────────
 export function AppSidebar() {
   const { isAdmin } = useAuth();
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const currentSubsystem = useMemo(() => detectSubsystem(location.pathname), [location.pathname]);
+  const currentDef = currentSubsystem ? SUBSYSTEMS[currentSubsystem] : null;
 
   return (
-    <Sidebar
-      collapsible="icon"
-      className="border-none bg-transparent h-full"
-    >
-      {/* Logo / brand header */}
-      <div className={`flex items-center h-14 shrink-0 border-b border-white/[0.06] ${collapsed ? "justify-center px-2" : "px-4 gap-3"}`}>
-        {/* Neon icon backdrop */}
+    <Sidebar collapsible="icon" className="border-none bg-transparent h-full">
+      {/* Logo / brand header — click to go home */}
+      <button
+        onClick={() => navigate("/home")}
+        className={`flex items-center h-14 shrink-0 border-b border-white/[0.06] transition-colors hover:bg-white/[0.02] ${collapsed ? "justify-center px-2" : "px-4 gap-3"}`}
+      >
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/15 ring-1 ring-violet-400/30 shrink-0">
           <Scale className="h-4 w-4 text-violet-400" />
         </div>
         {!collapsed && (
-          <div className="flex flex-col justify-center">
+          <div className="flex flex-col justify-center text-left">
             <span className="font-bold text-sm tracking-tight text-foreground leading-none">AW ECO</span>
             <span className="text-[9px] text-cyan-400/70 uppercase tracking-[0.15em] font-mono leading-none mt-1">Ecossistema</span>
           </div>
         )}
-      </div>
+      </button>
 
-      <SidebarContent className="py-1 overflow-y-auto scrollbar-hide">
-        <SidebarSection label="Hub Jurídico"     emoji="⚖️" items={hubJuridico}     color="blue"   collapsed={collapsed} />
-        <SidebarSection label="Central Resolva Já" emoji="💬" items={centralResolvaJa} color="green" collapsed={collapsed} />
-        <SidebarSection label="Comercial CRM"    emoji="📈" items={comercialCrm}    color="purple" collapsed={collapsed} />
-        <SidebarSection label="Configurações"    emoji="⚙️" items={configItems}     color="muted"  collapsed={collapsed} />
+      <SidebarContent className="py-1 overflow-y-auto scrollbar-thin">
+        {/* Current subsystem items (or portal welcome if /home) */}
+        {currentDef ? (
+          <SidebarSection
+            label={currentDef.label}
+            items={currentDef.items}
+            color={currentDef.color}
+            collapsed={collapsed}
+          />
+        ) : (
+          !collapsed && (
+            <div className="px-3 pt-4 pb-2">
+              <p className="text-[11px] text-muted-foreground/70">
+                Você está no portal. Escolha um sub-sistema abaixo ou pelos cards da direita.
+              </p>
+            </div>
+          )
+        )}
 
+        {/* Switcher: other subsystems */}
+        <SubsystemSwitcher current={currentSubsystem} collapsed={collapsed} />
+
+        {/* Configurações */}
+        <SidebarSection label="Configurações" items={configItems} color="muted" collapsed={collapsed} />
+
+        {/* Admin */}
         {isAdmin && (
           <SidebarGroup>
             {!collapsed && (

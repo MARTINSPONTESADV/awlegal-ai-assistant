@@ -60,6 +60,19 @@ html, body, #root {
 }
 
 @layer utilities {
+  /* Scrollbar invisível em elementos específicos (classe opt-in) */
+  .scrollbar-hidden,
+  .scrollbar-thin {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hidden::-webkit-scrollbar,
+  .scrollbar-thin::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
   .glass-panel {
     @apply bg-black/40 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)];
   }
