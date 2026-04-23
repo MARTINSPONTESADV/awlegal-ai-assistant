@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ExternalLink, Loader2 } from "lucide-react";
@@ -55,16 +55,18 @@ export default function WriterApp() {
   const [searchParams] = useSearchParams();
   const analiseId = searchParams.get("analise");
   const clienteIdParam = searchParams.get("cliente");
-  const [prefillReady, setPrefillReady] = useState<boolean>(!analiseId && !clienteIdParam);
+  const [prefillReady, setPrefillReady] = useState<boolean>(false);
   const [prefillError, setPrefillError] = useState<string | null>(null);
-  const iframeKey = useRef(0);
+  const [iframeKey, setIframeKey] = useState<number>(0);
 
   useEffect(() => { document.title = "AW Writer — AW ECO"; }, []);
 
   // Sempre carrega lista de clientes pra substituir o CLIENTES_MOCK do Writer —
-  // usuário vê clientes reais mesmo sem prefill.
+  // usuário vê clientes reais mesmo sem prefill. Bloqueia o iframe até o
+  // sessionStorage estar populado, senão o Writer inicia com os mocks.
   useEffect(() => {
     let cancelled = false;
+    setPrefillReady(false);
 
     const run = async () => {
       try {
@@ -133,7 +135,7 @@ export default function WriterApp() {
 
         sessionStorage.setItem(PREFILL_STORAGE_KEY, JSON.stringify(payload));
         if (!cancelled) {
-          iframeKey.current += 1;
+          setIframeKey((k) => k + 1);
           setPrefillReady(true);
         }
       } catch (err) {
@@ -181,7 +183,7 @@ export default function WriterApp() {
         </div>
       ) : (
         <iframe
-          key={iframeKey.current}
+          key={iframeKey}
           src="/apps/writer/index.html"
           title="AW Writer"
           className="flex-1 w-full border-0"

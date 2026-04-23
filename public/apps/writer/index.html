@@ -3223,15 +3223,32 @@ function renderBlocoClientes() {
           <span class="custom-dropdown-label">${labelAtual}</span>
           <svg class="custom-dropdown-arrow" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <div class="custom-dropdown-menu">
-          <button type="button" class="custom-dropdown-option ${!sel ? 'selected' : ''}" onclick="selecionarCliente('')">
-            <span>— Novo cliente —</span>
-          </button>
-          ${CLIENTES_MOCK.map(c => `
-            <button type="button" class="custom-dropdown-option ${sel?.id === c.id ? 'selected' : ''}" onclick="selecionarCliente('${c.id}')">
-              <span><strong>${c.nome_completo}</strong> · ${c.cpf}</span>
+        <div class="custom-dropdown-menu" style="max-height:360px;display:flex;flex-direction:column;overflow:hidden">
+          <div style="padding:8px 10px;border-bottom:1px solid var(--line);flex-shrink:0">
+            <input id="clientePickerSearch" type="text" placeholder="Buscar por nome ou CPF…"
+                   oninput="filtrarClientesPicker(this.value)"
+                   onclick="event.stopPropagation()"
+                   onkeydown="event.stopPropagation()"
+                   style="width:100%;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:6px;padding:7px 10px;color:var(--text);font-size:0.85rem;outline:none;box-sizing:border-box">
+          </div>
+          <div id="clientePickerOptions" style="overflow-y:auto;flex:1">
+            <button type="button" class="custom-dropdown-option ${!sel ? 'selected' : ''}" onclick="selecionarCliente('')">
+              <span>— Novo cliente —</span>
             </button>
-          `).join('')}
+            ${CLIENTES_MOCK.map(c => {
+              const nameLower = (c.nome_completo || '').toLowerCase();
+              const cpfDigits = String(c.cpf || '').replace(/\D/g, '');
+              return `
+              <button type="button" class="custom-dropdown-option cliente-option ${String(sel?.id) === String(c.id) ? 'selected' : ''}"
+                      data-cliente-id="${c.id}"
+                      data-search-name="${nameLower.replace(/"/g, '&quot;')}"
+                      data-search-cpf="${cpfDigits}"
+                      onclick="selecionarCliente('${String(c.id).replace(/'/g, "\\'")}')">
+                <span><strong>${c.nome_completo}</strong>${c.cpf ? ` · ${c.cpf}` : ''}</span>
+              </button>
+            `;
+            }).join('')}
+          </div>
         </div>
       </div>
     </div>
@@ -3244,7 +3261,31 @@ function toggleClienteDropdown() {
   const wasOpen = dd.classList.contains('open');
   // fecha todos e toggle o atual
   document.querySelectorAll('.custom-dropdown.open').forEach(el => el.classList.remove('open'));
-  if (!wasOpen) dd.classList.add('open');
+  if (!wasOpen) {
+    dd.classList.add('open');
+    // Foca busca e limpa filtro anterior
+    setTimeout(() => {
+      const input = document.getElementById('clientePickerSearch');
+      if (input) {
+        input.value = '';
+        filtrarClientesPicker('');
+        input.focus();
+      }
+    }, 30);
+  }
+}
+
+function filtrarClientesPicker(query) {
+  const q = (query || '').trim().toLowerCase();
+  const digits = q.replace(/\D/g, '');
+  const opts = document.querySelectorAll('#clientePickerOptions .cliente-option');
+  opts.forEach(el => {
+    const nameLower = el.dataset.searchName || '';
+    const cpfDigits = el.dataset.searchCpf || '';
+    const nameMatch = nameLower.includes(q);
+    const cpfMatch = digits.length >= 3 && cpfDigits.includes(digits);
+    el.style.display = (!q || nameMatch || cpfMatch) ? '' : 'none';
+  });
 }
 
 // Fecha dropdown ao clicar fora
