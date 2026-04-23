@@ -6,6 +6,22 @@ import { LinkClienteDialog, type FinderAnalysisPayload } from "@/components/find
 // @ts-expect-error - Finder é JSX sem types, integração direta
 import FinderApp from "@/apps/finder/App.jsx";
 
+interface RubricaItem {
+  data: string;
+  dataISO: string | null;
+  valor: number;
+  descricao: string;
+}
+
+interface RubricaDetalhada {
+  id: string;
+  label: string;
+  total: number;
+  dataInicioISO: string | null;
+  dataFimISO: string | null;
+  items: RubricaItem[];
+}
+
 interface FinderAnalysisEventDetail {
   meta?: {
     banco?: string;
@@ -15,10 +31,18 @@ interface FinderAnalysisEventDetail {
   };
   grouped?: Record<string, unknown>;
   rubricas?: string[];
+  rubricasDetalhadas?: RubricaDetalhada[];
   totalDescontos?: number;
   fileName?: string;
   buildXlsxBlob?: () => Promise<Blob | null>;
   periodoISO?: { inicio?: string | null; fim?: string | null };
+}
+
+function isoToBR(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return "";
+  return `${d}/${m}/${y}`;
 }
 
 export default function FinderPage() {
@@ -50,17 +74,28 @@ export default function FinderPage() {
       const xlsxBlob = analysis.buildXlsxBlob ? await analysis.buildXlsxBlob() : null;
       const totalDescontos = analysis.totalDescontos ?? 0;
       const rubricas = analysis.rubricas ?? [];
+      const inicioISO = analysis.periodoISO?.inicio || null;
+      const fimISO = analysis.periodoISO?.fim || null;
+      const metaPeriodo = analysis.meta?.periodo;
+      const periodoLabelFromISO =
+        inicioISO && fimISO ? `${isoToBR(inicioISO)} a ${isoToBR(fimISO)}` : null;
+      const periodoLabel =
+        metaPeriodo && metaPeriodo !== "—" ? metaPeriodo : periodoLabelFromISO;
       setPayload({
         banco: analysis.meta?.banco || "DESCONHECIDO",
         agencia: analysis.meta?.agencia || null,
         conta: analysis.meta?.conta || null,
-        periodo_label: analysis.meta?.periodo || null,
-        data_inicio_descontos: analysis.periodoISO?.inicio || null,
-        data_fim_descontos: analysis.periodoISO?.fim || null,
+        periodo_label: periodoLabel,
+        data_inicio_descontos: inicioISO,
+        data_fim_descontos: fimISO,
         valor_total_descontos: totalDescontos || null,
         valor_dobro: totalDescontos ? totalDescontos * 2 : null,
         rubricas,
-        raw_grouped: analysis.grouped ?? null,
+        raw_grouped: {
+          rubricasDetalhadas: analysis.rubricasDetalhadas ?? [],
+          meta: analysis.meta ?? {},
+          fileName: analysis.fileName ?? null,
+        },
         xlsxBlob,
         xlsxFilename: analysis.fileName || "finder-analise.xlsx",
       });

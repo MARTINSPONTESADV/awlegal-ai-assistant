@@ -3260,7 +3260,8 @@ function selecionarCliente(id) {
     state.dadosPacote1 = {};
     state.dadosPacote2 = {};
   } else {
-    const c = CLIENTES_MOCK.find(x => x.id === parseInt(id));
+    const c = CLIENTES_MOCK.find(x => String(x.id) === String(id));
+    if (!c) { render(); return; }
     state.clienteSelecionado = c;
     ['nome_completo','nacionalidade','estado_civil','profissao','rg','orgao_expedidor','cpf','endereco_completo'].forEach(k => {
       state.dadosPacote1[k] = c[k] || '';
@@ -3355,6 +3356,48 @@ function renderPacote2(view) {
  *  - O plural/singular da palavra "rubrica(s)" e "denominação/denominações"
  */
 function renderBlocoRubricas() {
+  // Modo dinâmico: quando o Writer é aberto via AW-ECO com análise do Finder,
+  // state.rubricasDinamicas contém todas as rubricas detectadas com seus items,
+  // totais e datas. Usuário marca apenas as que vão nesta peça — valores e
+  // período da Etapa 3 recalculam automaticamente com base na seleção.
+  if (Array.isArray(state.rubricasDinamicas) && state.rubricasDinamicas.length > 0) {
+    const marcadas = state.rubricasDinamicas.filter(r => r.selected).length;
+    const fmt = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtBR = iso => {
+      if (!iso) return '—';
+      const [y, m, d] = String(iso).split('-');
+      return (d && m && y) ? `${d}/${m}/${y}` : '—';
+    };
+    const dica = 'Detectamos estas rubricas no extrato analisado pelo AW Finder. Desmarque as que não entram nesta peça — valores e período recalculam automaticamente.';
+    const avisoMin = marcadas === 0
+      ? `<div class="rubricas-aviso-erro">⚠ Marque pelo menos 1 rubrica para continuar.</div>`
+      : '';
+    const itens = state.rubricasDinamicas.map(r => `
+      <label class="rubrica-check ${r.selected ? 'marcada' : ''}" style="flex:1 1 100%;max-width:none">
+        <input type="checkbox" ${r.selected ? 'checked' : ''} onchange="toggleRubrica('${(r.id || '').replace(/'/g,"\\'")}')">
+        <span class="rubrica-check-box"></span>
+        <span class="rubrica-check-label">
+          ${(r.label || r.id || 'Rubrica').toUpperCase()}
+          <span class="rubrica-check-sub">
+            ${(r.items || []).length} lançamento${(r.items || []).length !== 1 ? 's' : ''} ·
+            Total R$ ${fmt(r.total)} ·
+            ${fmtBR(r.dataInicioISO)} a ${fmtBR(r.dataFimISO)}
+          </span>
+        </span>
+      </label>
+    `).join('');
+    return `
+      <div class="rubricas-block">
+        <div class="rubricas-header">
+          <div class="rubricas-titulo">Rubricas detectadas no extrato</div>
+          <div class="rubricas-subtitulo">${dica}</div>
+        </div>
+        <div class="rubricas-grid">${itens}</div>
+        ${avisoMin}
+      </div>
+    `;
+  }
+
   const r = state.rubricas || { cartao: false, parcela: false, bx: false };
   const marcadas = (r.cartao ? 1 : 0) + (r.parcela ? 1 : 0) + (r.bx ? 1 : 0);
 
@@ -3396,10 +3439,42 @@ function renderBlocoRubricas() {
 }
 
 function toggleRubrica(chave) {
+  if (Array.isArray(state.rubricasDinamicas) && state.rubricasDinamicas.length > 0) {
+    const r = state.rubricasDinamicas.find(x => String(x.id) === String(chave));
+    if (r) r.selected = !r.selected;
+    recomputarPacote3DeRubricasSelecionadas();
+    render();
+    return;
+  }
   if (!state.rubricas) state.rubricas = { cartao: false, parcela: false, bx: false };
   state.rubricas[chave] = !state.rubricas[chave];
-  // Re-renderiza só pra atualizar o visual dos checkboxes e o aviso de mínimo
   render();
+}
+
+function recomputarPacote3DeRubricasSelecionadas() {
+  if (!Array.isArray(state.rubricasDinamicas)) return;
+  const sel = state.rubricasDinamicas.filter(r => r.selected);
+  const totalNum = sel.reduce((s, r) => s + (Number(r.total) || 0), 0);
+  const allDatesISO = sel
+    .flatMap(r => (r.items || []).map(i => i.dataISO))
+    .filter(Boolean)
+    .sort();
+  const toBR = iso => {
+    if (!iso) return '';
+    const [y, m, d] = String(iso).split('-');
+    return (d && m && y) ? `${d}/${m}/${y}` : '';
+  };
+  state.dadosPacote3 = state.dadosPacote3 || {};
+  if (sel.length === 0) {
+    state.dadosPacote3.valor_total_descontos = '';
+    state.dadosPacote3.data_inicio_descontos = '';
+    state.dadosPacote3.data_fim_descontos = '';
+  } else {
+    state.dadosPacote3.valor_total_descontos = totalNum
+      .toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    state.dadosPacote3.data_inicio_descontos = allDatesISO.length ? toBR(allDatesISO[0]) : '';
+    state.dadosPacote3.data_fim_descontos = allDatesISO.length ? toBR(allDatesISO[allDatesISO.length - 1]) : '';
+  }
 }
 
 /* =========================================================================
@@ -4445,6 +4520,9 @@ function montarLetrasRubricas() {
  * Conta quantas rubricas estão marcadas em state.rubricas.
  */
 function contarRubricasMarcadas() {
+  if (Array.isArray(state.rubricasDinamicas) && state.rubricasDinamicas.length > 0) {
+    return state.rubricasDinamicas.filter(x => x.selected).length;
+  }
   const r = state.rubricas || {};
   return (r.cartao ? 1 : 0) + (r.parcela ? 1 : 0) + (r.bx ? 1 : 0);
 }
@@ -5079,23 +5157,21 @@ async function aplicarPrefillHost() {
   try { data = JSON.parse(raw); } catch { return false; }
   if (!data || typeof data !== 'object') return false;
 
-  // Pacote 1/2 via cliente
-  if (data.cliente && typeof data.cliente === 'object') {
-    const c = data.cliente;
-    state.clienteSelecionado = {
-      id: '__host__',
-      nome_completo: c.nome_completo || '',
-      cpf: c.cpf || '',
-    };
-    ['nome_completo','nacionalidade','estado_civil','profissao','rg','orgao_expedidor','cpf','endereco_completo'].forEach(k => {
-      if (c[k] != null) state.dadosPacote1[k] = c[k];
-    });
-    ['idade','numero_filhos','idades_filhos','conjuge_trabalha','renda_mensal','unico_provedor','outros_dependentes','tipo_moradia','condicao_saude','escolaridade','observacoes_livres'].forEach(k => {
-      if (c[k] != null) state.dadosPacote2[k] = c[k];
-    });
+  // Substitui a lista de clientes mock pela lista real do host (AW-ECO)
+  if (Array.isArray(data.clientesList)) {
+    CLIENTES_MOCK.length = 0;
+    data.clientesList.forEach(c => CLIENTES_MOCK.push(c));
   }
 
-  // Pacote 3 campos diretos
+  // Cliente específico (vínculo da análise) — insere na lista se faltar e seleciona
+  if (data.cliente && typeof data.cliente === 'object' && data.cliente.id) {
+    const exists = CLIENTES_MOCK.find(x => String(x.id) === String(data.cliente.id));
+    if (!exists) CLIENTES_MOCK.push(data.cliente);
+    selecionarCliente(data.cliente.id);
+  }
+
+  // Pacote 3 — só os campos estáveis (agência/conta). Datas e valores derivam
+  // da seleção de rubricas (recomputarPacote3DeRubricasSelecionadas).
   if (data.pacote3 && typeof data.pacote3 === 'object') {
     Object.keys(data.pacote3).forEach(k => {
       if (data.pacote3[k] != null && data.pacote3[k] !== '') {
@@ -5104,8 +5180,21 @@ async function aplicarPrefillHost() {
     });
   }
 
-  // Rubricas (array de labels) — mapeia pros booleans existentes
-  if (Array.isArray(data.rubricas) && data.rubricas.length > 0) {
+  // Rubricas detalhadas vindas do Finder — modo dinâmico.
+  // Todas começam marcadas; usuário desmarca as que não entram nesta peça.
+  if (Array.isArray(data.rubricasDetalhadas) && data.rubricasDetalhadas.length > 0) {
+    state.rubricasDinamicas = data.rubricasDetalhadas.map(r => ({
+      id: r.id || r.label || '',
+      label: r.label || r.id || 'Rubrica',
+      total: Number(r.total) || 0,
+      dataInicioISO: r.dataInicioISO || null,
+      dataFimISO: r.dataFimISO || null,
+      items: Array.isArray(r.items) ? r.items : [],
+      selected: true,
+    }));
+    recomputarPacote3DeRubricasSelecionadas();
+  } else if (Array.isArray(data.rubricas) && data.rubricas.length > 0) {
+    // Fallback: rubricas simples por label, mapeia pros 3 booleans
     const labels = data.rubricas.map(s => (s || '').toString().toUpperCase());
     const has = (re) => labels.some(l => re.test(l));
     state.rubricas = {
@@ -5116,6 +5205,9 @@ async function aplicarPrefillHost() {
   }
 
   // XLSX — decodifica base64 e processa (reusa processarTabelaXlsx existente)
+  // IMPORTANTE: processarTabelaXlsx chama autodetectarRubricas internamente,
+  // que sobrescreve state.rubricas (booleans). Precisamos preservar o modo
+  // dinâmico, então restauramos rubricasDinamicas após o processamento.
   if (data.xlsxBase64 && typeof XLSX !== 'undefined') {
     try {
       const binary = atob(data.xlsxBase64);
@@ -5124,7 +5216,12 @@ async function aplicarPrefillHost() {
       const file = new File([bytes], data.xlsxFilename || 'finder-analise.xlsx', {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
+      const backupDinamicas = state.rubricasDinamicas;
       await processarTabelaXlsx(file);
+      if (backupDinamicas) {
+        state.rubricasDinamicas = backupDinamicas;
+        recomputarPacote3DeRubricasSelecionadas();
+      }
     } catch (e) {
       console.warn('AW prefill: falha ao carregar XLSX', e);
     }

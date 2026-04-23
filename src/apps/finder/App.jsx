@@ -641,14 +641,32 @@ export default function App() {
       if (!d || !m || !y) return null;
       return `${y.padStart(4,"0")}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
     };
-    const allDatesISO = reembolsaveis
-      .flatMap(g => g.items.map(it => toISO(it.data)))
+    const rubricasDetalhadas = reembolsaveis.map(g => {
+      const items = g.items.map(it => ({
+        data: it.data,
+        dataISO: toISO(it.data),
+        valor: Number(it.valor) || 0,
+        descricao: it.historico || "",
+      }));
+      const datesISO = items.map(i => i.dataISO).filter(Boolean).sort();
+      const total = items.reduce((s, i) => s + i.valor, 0);
+      return {
+        id: g.cat.id,
+        label: g.cat.label,
+        total,
+        dataInicioISO: datesISO.length ? datesISO[0] : null,
+        dataFimISO: datesISO.length ? datesISO[datesISO.length - 1] : null,
+        items,
+      };
+    });
+    const allDatesISO = rubricasDetalhadas
+      .flatMap(r => r.items.map(i => i.dataISO))
       .filter(Boolean)
       .sort();
     const periodoISO = allDatesISO.length
       ? { inicio: allDatesISO[0], fim: allDatesISO[allDatesISO.length - 1] }
       : { inicio: null, fim: null };
-    const rubricas = reembolsaveis.map(g => g.cat.label);
+    const rubricas = rubricasDetalhadas.map(r => r.label);
     const buildXlsxBlob = async () => {
       try {
         const XLSX = await loadXLSX();
@@ -683,6 +701,7 @@ export default function App() {
           meta,
           grouped,
           rubricas,
+          rubricasDetalhadas,
           totalDescontos: totalValor,
           periodoISO,
           fileName,

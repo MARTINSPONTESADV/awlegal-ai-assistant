@@ -33,18 +33,21 @@ interface FinderAnalysisRow {
   rubricas: unknown;
   xlsx_storage_path: string | null;
   xlsx_filename: string | null;
+  raw_grouped: unknown;
 }
 
-function isoToBR(iso: string | null): string {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-");
-  if (!y || !m || !d) return "";
-  return `${d}/${m}/${y}`;
-}
-
-function formatBRL(n: number | null): string {
-  if (n == null) return "";
-  return n.toFixed(2).replace(".", ",");
+function toWriterCliente(c: ClienteRow) {
+  return {
+    id: c.id,
+    nome_completo: c.nome_completo || "",
+    nacionalidade: c.nacionalidade || "brasileiro(a)",
+    estado_civil: c.estado_civil || "",
+    profissao: c.profissao || "",
+    rg: c.rg || "",
+    orgao_expedidor: c.orgao_expedidor || "",
+    cpf: c.cpf || "",
+    endereco_completo: c.endereco_cep || "",
+  };
 }
 
 export default function WriterApp() {
@@ -58,12 +61,20 @@ export default function WriterApp() {
 
   useEffect(() => { document.title = "AW Writer — AW ECO"; }, []);
 
+  // Sempre carrega lista de clientes pra substituir o CLIENTES_MOCK do Writer —
+  // usuário vê clientes reais mesmo sem prefill.
   useEffect(() => {
-    if (!analiseId && !clienteIdParam) return;
     let cancelled = false;
 
     const run = async () => {
       try {
+        const { data: clientesData, error: clientesErr } = await supabase
+          .from("clientes")
+          .select("id, nome_completo, cpf, nacionalidade, estado_civil, profissao, rg, orgao_expedidor, endereco_cep")
+          .order("nome_completo", { ascending: true });
+        if (clientesErr) throw clientesErr;
+        const clientesList = (clientesData || []).map(toWriterCliente);
+
         let cliente: ClienteRow | null = null;
         let analise: FinderAnalysisRow | null = null;
 
@@ -79,17 +90,17 @@ export default function WriterApp() {
 
         const resolvedClienteId = clienteIdParam || analise?.cliente_id || null;
         if (resolvedClienteId) {
-          const { data, error } = await supabase
-            .from("clientes")
-            .select("id, nome_completo, cpf, nacionalidade, estado_civil, profissao, rg, orgao_expedidor, endereco_cep")
-            .eq("id", resolvedClienteId)
-            .maybeSingle();
-          if (error) throw error;
-          cliente = data as ClienteRow | null;
-        }
-
-        if (!cliente && !analise) {
-          throw new Error("Nada encontrado pra preencher");
+          const found = (clientesData || []).find((c) => c.id === resolvedClienteId);
+          cliente = (found as ClienteRow) || null;
+          if (!cliente) {
+            const { data, error } = await supabase
+              .from("clientes")
+              .select("id, nome_completo, cpf, nacionalidade, estado_civil, profissao, rg, orgao_expedidor, endereco_cep")
+              .eq("id", resolvedClienteId)
+              .maybeSingle();
+            if (error) throw error;
+            cliente = data as ClienteRow | null;
+          }
         }
 
         let xlsxBase64: string | null = null;
@@ -97,30 +108,25 @@ export default function WriterApp() {
           xlsxBase64 = await fetchFinderAnalysisXlsxBase64(analise.xlsx_storage_path);
         }
 
+        // rubricasDetalhadas vêm de analise.raw_grouped (estrutura rica)
+        let rubricasDetalhadas: unknown[] = [];
+        if (analise?.raw_grouped && typeof analise.raw_grouped === "object") {
+          const rg = analise.raw_grouped as { rubricasDetalhadas?: unknown[] };
+          if (Array.isArray(rg.rubricasDetalhadas)) {
+            rubricasDetalhadas = rg.rubricasDetalhadas;
+          }
+        }
+
         const payload = {
-          cliente: cliente
-            ? {
-                nome_completo: cliente.nome_completo || "",
-                nacionalidade: cliente.nacionalidade || "brasileiro(a)",
-                estado_civil: cliente.estado_civil || "",
-                profissao: cliente.profissao || "",
-                rg: cliente.rg || "",
-                orgao_expedidor: cliente.orgao_expedidor || "",
-                cpf: cliente.cpf || "",
-                endereco_completo: cliente.endereco_cep || "",
-              }
-            : null,
+          clientesList,
+          cliente: cliente ? toWriterCliente(cliente) : null,
           pacote3: analise
             ? {
-                agencia: analise.agencia || "",
-                conta_corrente: analise.conta || "",
-                data_inicio_descontos: isoToBR(analise.data_inicio_descontos),
-                data_fim_descontos: isoToBR(analise.data_fim_descontos),
-                valor_total_descontos: formatBRL(analise.valor_total_descontos),
-                valor_dano_moral: "",
+                numero_agencia: analise.agencia || "",
+                numero_conta: analise.conta || "",
               }
             : null,
-          rubricas: Array.isArray(analise?.rubricas) ? (analise?.rubricas as string[]) : [],
+          rubricasDetalhadas,
           xlsxBase64,
           xlsxFilename: analise?.xlsx_filename || "finder-analise.xlsx",
         };
