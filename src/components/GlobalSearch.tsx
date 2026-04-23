@@ -58,9 +58,18 @@ export function GlobalSearch() {
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary-foreground/50" />
         <Input
+          type="search"
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
           placeholder="Buscar cliente, processo, CPF..."
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          name="aw-global-search"
+          data-form-type="other"
+          data-lpignore="true"
+          data-1p-ignore="true"
           className="w-64 pl-8 h-8 text-sm bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground placeholder:text-primary-foreground/50 focus-visible:ring-primary-foreground/30"
         />
       </div>

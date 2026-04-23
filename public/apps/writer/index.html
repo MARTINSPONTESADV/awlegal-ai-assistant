@@ -2483,11 +2483,18 @@ function renderLobby(view) {
         </svg>
         <input
           id="buscaLobby"
-          type="text"
+          type="search"
           class="search-bar-input"
           placeholder="Buscar ação..."
           value="${escapeHtml(busca)}"
           autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          data-form-type="other"
+          data-lpignore="true"
+          data-1p-ignore="true"
+          name="aw-lobby-search"
         >
         ${busca
           ? `<button class="search-bar-clear" onclick="limparBusca()" title="Limpar">
@@ -3225,7 +3232,10 @@ function renderBlocoClientes() {
         </button>
         <div class="custom-dropdown-menu" style="max-height:360px;display:flex;flex-direction:column;overflow:hidden">
           <div style="padding:8px 10px;border-bottom:1px solid var(--line);flex-shrink:0">
-            <input id="clientePickerSearch" type="text" placeholder="Buscar por nome ou CPF…"
+            <input id="clientePickerSearch" type="search" placeholder="Buscar por nome ou CPF…"
+                   autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                   data-form-type="other" data-lpignore="true" data-1p-ignore="true"
+                   name="aw-cp-search"
                    oninput="filtrarClientesPicker(this.value)"
                    onclick="event.stopPropagation()"
                    onkeydown="event.stopPropagation()"
