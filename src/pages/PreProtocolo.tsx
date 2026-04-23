@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { SpotlightCard } from "@/components/SpotlightCard";
 import { FileSearch, PenLine, ArrowRight, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FinderAnalysesList } from "@/components/finder/FinderAnalysesList";
 
 export default function PreProtocolo() {
   useEffect(() => { document.title = "Pré-Protocolo — AW ECO"; }, []);
@@ -82,6 +83,16 @@ export default function PreProtocolo() {
             </button>
           );
         })}
+      </div>
+
+      <div className="mt-10">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="font-display text-xl font-bold">Análises vinculadas</h2>
+          <span className="text-xs text-muted-foreground">
+            Clique em "Gerar peça" pra abrir no AW Writer com tudo pré-preenchido
+          </span>
+        </div>
+        <FinderAnalysesList />
       </div>
     </div>
   );

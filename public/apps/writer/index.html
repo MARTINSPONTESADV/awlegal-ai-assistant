@@ -5065,6 +5065,77 @@ function atualizarBtnConfig() {
 }
 
 /* =========================================================================
+   HOST PREFILL BRIDGE (dormente — no-op quando standalone)
+   Host (AW-ECO wrapper) pode setar sessionStorage['aw-writer:prefill'] com:
+     { cliente: {...}, pacote3: {...}, rubricas: [...], xlsxBase64, xlsxFilename }
+   antes de carregar o iframe. Se não houver payload, nada acontece.
+   ========================================================================= */
+async function aplicarPrefillHost() {
+  let raw;
+  try { raw = sessionStorage.getItem('aw-writer:prefill'); } catch { return false; }
+  if (!raw) return false;
+  try { sessionStorage.removeItem('aw-writer:prefill'); } catch {}
+  let data;
+  try { data = JSON.parse(raw); } catch { return false; }
+  if (!data || typeof data !== 'object') return false;
+
+  // Pacote 1/2 via cliente
+  if (data.cliente && typeof data.cliente === 'object') {
+    const c = data.cliente;
+    state.clienteSelecionado = {
+      id: '__host__',
+      nome_completo: c.nome_completo || '',
+      cpf: c.cpf || '',
+    };
+    ['nome_completo','nacionalidade','estado_civil','profissao','rg','orgao_expedidor','cpf','endereco_completo'].forEach(k => {
+      if (c[k] != null) state.dadosPacote1[k] = c[k];
+    });
+    ['idade','numero_filhos','idades_filhos','conjuge_trabalha','renda_mensal','unico_provedor','outros_dependentes','tipo_moradia','condicao_saude','escolaridade','observacoes_livres'].forEach(k => {
+      if (c[k] != null) state.dadosPacote2[k] = c[k];
+    });
+  }
+
+  // Pacote 3 campos diretos
+  if (data.pacote3 && typeof data.pacote3 === 'object') {
+    Object.keys(data.pacote3).forEach(k => {
+      if (data.pacote3[k] != null && data.pacote3[k] !== '') {
+        state.dadosPacote3[k] = data.pacote3[k];
+      }
+    });
+  }
+
+  // Rubricas (array de labels) — mapeia pros booleans existentes
+  if (Array.isArray(data.rubricas) && data.rubricas.length > 0) {
+    const labels = data.rubricas.map(s => (s || '').toString().toUpperCase());
+    const has = (re) => labels.some(l => re.test(l));
+    state.rubricas = {
+      cartao: has(/CART[AÃ]O/),
+      parcela: has(/PARCELA|CR[EÉ]DITO PESSOAL|EMPR[EÉ]STIMO/),
+      bx: has(/BX|ANT[EÉ]CIP|BAIXA/),
+    };
+  }
+
+  // XLSX — decodifica base64 e processa (reusa processarTabelaXlsx existente)
+  if (data.xlsxBase64 && typeof XLSX !== 'undefined') {
+    try {
+      const binary = atob(data.xlsxBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const file = new File([bytes], data.xlsxFilename || 'finder-analise.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      await processarTabelaXlsx(file);
+    } catch (e) {
+      console.warn('AW prefill: falha ao carregar XLSX', e);
+    }
+  }
+
+  // Navega pro pacote1 pra usuário revisar do começo
+  if (typeof navegarPara === 'function') navegarPara('pacote1');
+  return true;
+}
+
+/* =========================================================================
    INIT
    ========================================================================= */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -5079,6 +5150,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('AW Writer: config não carregou do Supabase. ' +
                  'Admin pode configurar via botão de engrenagem.');
   }
+
+  // Tenta prefill do host (AW-ECO) — no-op em standalone
+  try { await aplicarPrefillHost(); } catch (e) { console.warn('AW prefill host falhou', e); }
 });
 </script>
 

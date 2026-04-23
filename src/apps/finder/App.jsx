@@ -630,6 +630,76 @@ export default function App() {
   const totalOcorrencias = reembolsaveis.reduce((s,g)=>s+g.items.length,0);
   const totalValor = reembolsaveis.reduce((s,g)=>s+g.items.reduce((ss,i)=>ss+i.valor,0),0);
 
+  // Porta dormente — dispara evento com os dados da análise quando pronta.
+  // Host (AW-ECO wrapper) pode escutar e integrar; standalone: ninguém escuta, no-op.
+  useEffect(() => {
+    if (phase !== "results" || reembolsaveis.length === 0) return;
+    const toISO = (dataBR) => {
+      const parts = (dataBR || "").split("/");
+      if (parts.length !== 3) return null;
+      const [d, m, y] = parts;
+      if (!d || !m || !y) return null;
+      return `${y.padStart(4,"0")}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+    };
+    const allDatesISO = reembolsaveis
+      .flatMap(g => g.items.map(it => toISO(it.data)))
+      .filter(Boolean)
+      .sort();
+    const periodoISO = allDatesISO.length
+      ? { inicio: allDatesISO[0], fim: allDatesISO[allDatesISO.length - 1] }
+      : { inicio: null, fim: null };
+    const rubricas = reembolsaveis.map(g => g.cat.label);
+    const buildXlsxBlob = async () => {
+      try {
+        const XLSX = await loadXLSX();
+        const wb = XLSX.utils.book_new();
+        const ws = buildMultiSheet(XLSX, reembolsaveis);
+        XLSX.utils.book_append_sheet(wb, ws, "Descontos Identificados");
+        const usedNames = new Set(["Descontos Identificados"]);
+        for (const g of reembolsaveis) {
+          let name = g.cat.label.slice(0, 31);
+          if (usedNames.has(name)) {
+            let suffix = 2;
+            let suffixStr = ` (${suffix})`;
+            while (usedNames.has(name.slice(0, 31 - suffixStr.length) + suffixStr)) {
+              suffix++;
+              suffixStr = ` (${suffix})`;
+            }
+            name = name.slice(0, 31 - suffixStr.length) + suffixStr;
+          }
+          usedNames.add(name);
+          const catWs = buildSheet(XLSX, g.cat, g.items);
+          XLSX.utils.book_append_sheet(wb, catWs, name);
+        }
+        const wbOut = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+        return new Blob([wbOut], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      } catch {
+        return null;
+      }
+    };
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("aw-finder:analysis-ready", {
+        detail: {
+          meta,
+          grouped,
+          rubricas,
+          totalDescontos: totalValor,
+          periodoISO,
+          fileName,
+          buildXlsxBlob,
+        },
+      }));
+    }
+  }, [phase, grouped, meta, reembolsaveis, totalValor, fileName, loadXLSX, buildMultiSheet, buildSheet]);
+
+  useEffect(() => {
+    if (phase === "upload" && Object.keys(grouped).length === 0) {
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new CustomEvent("aw-finder:reset"));
+      }
+    }
+  }, [phase, grouped]);
+
   return (
     <>
       <style>{`

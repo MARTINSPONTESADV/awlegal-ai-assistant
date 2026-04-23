@@ -265,6 +265,74 @@ export type Database = {
         }
         Relationships: []
       }
+      finder_analyses: {
+        Row: {
+          id: string
+          cliente_id: string
+          banco: string
+          agencia: string | null
+          conta: string | null
+          periodo_label: string | null
+          data_inicio_descontos: string | null
+          data_fim_descontos: string | null
+          valor_total_descontos: number | null
+          valor_dobro: number | null
+          rubricas: Json
+          xlsx_storage_path: string | null
+          xlsx_filename: string | null
+          raw_grouped: Json | null
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          cliente_id: string
+          banco: string
+          agencia?: string | null
+          conta?: string | null
+          periodo_label?: string | null
+          data_inicio_descontos?: string | null
+          data_fim_descontos?: string | null
+          valor_total_descontos?: number | null
+          valor_dobro?: number | null
+          rubricas?: Json
+          xlsx_storage_path?: string | null
+          xlsx_filename?: string | null
+          raw_grouped?: Json | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          cliente_id?: string
+          banco?: string
+          agencia?: string | null
+          conta?: string | null
+          periodo_label?: string | null
+          data_inicio_descontos?: string | null
+          data_fim_descontos?: string | null
+          valor_total_descontos?: number | null
+          valor_dobro?: number | null
+          rubricas?: Json
+          xlsx_storage_path?: string | null
+          xlsx_filename?: string | null
+          raw_grouped?: Json | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finder_analyses_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       controle_atendimento: {
         Row: {
           atendente_id: string | null
